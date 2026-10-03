@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; style-src 'self'; script-src 'self'"
+    />
+    <title>WLauncher</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <div class="logo">W</div>
+        <h1>WLauncher</h1>
+        <p class="subtitle" id="subtitle">Сборка WLauncher</p>
+      </header>
+
+      <label class="field">
+        <span>Ник на сервере</span>
+        <input id="nickname" type="text" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Steve" />
+      </label>
+
+      <button id="play" type="button">Играть</button>
+
+      <p class="hint" id="hint"></p>
+
+      <section class="log-wrap">
+        <pre id="log" aria-live="polite"></pre>
+      </section>
+    </main>
+    <script src="renderer.js"></script>
+  </body>
+</html>
