@@ -174,11 +174,14 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
     filteredGameArgs.push('--quickPlayMultiplayer', server);
   }
 
+  // Remove --demo flag and empty arguments
+  const cleanGameArgs = filteredGameArgs.filter((a) => a && a !== '--demo');
+
   const mainClass = versionJson.mainClass;
   if (!mainClass) throw new Error('mainClass не найден в version json');
 
   // JVM options first, then the main class, then game arguments
-  const fullArgs = [...jvmArgs, mainClass, ...filteredGameArgs];
+  const fullArgs = [...jvmArgs, mainClass, ...cleanGameArgs];
 
   onLog?.(`Запуск: ${mainClass}`);
   return { java, args: fullArgs, mainClass, gameDir };

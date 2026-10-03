@@ -60,6 +60,10 @@ async function play({ config, nickname, onLog, onProgress } = {}) {
     onLog: log,
   });
 
+  // The game is running — our job is done, close the launcher.
+  log('Игра запущена. Закрываем лаунчер.');
+  app.quit();
+
   return { pid: child?.pid ?? null };
 }
 
