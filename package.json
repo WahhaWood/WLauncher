@@ -25,7 +25,7 @@
     "files": [
       "src/**/*",
       "config.json",
-      "vendor/**/*"
+      "vendor/packwiz/**/*"
     ],
     "win": {
       "target": [

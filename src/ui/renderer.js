@@ -3,6 +3,8 @@ const playButton = document.getElementById('play');
 const logBox = document.getElementById('log');
 const hint = document.getElementById('hint');
 const subtitle = document.getElementById('subtitle');
+const progressBar = document.getElementById('progress');
+const progressFill = document.getElementById('progress-fill');
 
 const STORAGE_KEY = 'wlauncher.nickname';
 let running = false;
@@ -13,6 +15,15 @@ function appendLog(line) {
   logBox.scrollTop = logBox.scrollHeight;
 }
 
+function setProgress(fraction) {
+  if (fraction == null) {
+    progressBar.classList.remove('visible');
+    return;
+  }
+  progressBar.classList.add('visible');
+  progressFill.style.width = `${Math.round(fraction * 100)}%`;
+}
+
 function setRunning(value) {
   running = value;
   playButton.disabled = value;
@@ -20,17 +31,10 @@ function setRunning(value) {
 }
 
 window.wlauncher.onLog(appendLog);
+window.wlauncher.onProgress(setProgress);
 
 window.wlauncher.onConfig((config) => {
   if (config.server) subtitle.textContent = `Сервер: ${config.server}`;
-});
-
-window.wlauncher.info().then((info) => {
-  if (!info.installed) {
-    hint.textContent = 'Движок лаунчера не найден в vendor/fjord — сборка повреждена.';
-    playButton.disabled = true;
-  }
-  if (info.server) subtitle.textContent = `Сервер: ${info.server}`;
 });
 
 nickInput.value = localStorage.getItem(STORAGE_KEY) || '';
@@ -53,14 +57,13 @@ playButton.addEventListener('click', async () => {
   }
 
   hint.textContent = '';
+  setProgress(0);
   setRunning(true);
-  appendLog(`Ник: ${nickname}`);
 
   const result = await window.wlauncher.play(nickname);
   if (!result.ok) {
     hint.textContent = result.error;
     setRunning(false);
-  } else {
-    appendLog(`Готово. ${result.command || ''}`);
+    setProgress(null);
   }
 });

@@ -3,7 +3,7 @@ const path = require('path');
 const fs = require('fs');
 
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config.json'), 'utf8'));
-const { describeEngine, prepare, syncPack, launch } = require('./engine');
+const { play } = require('./engine');
 
 let mainWindow = null;
 
@@ -42,30 +42,21 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => app.quit());
 
-ipcMain.handle('engine:info', () => describeEngine(config));
-
 ipcMain.handle('engine:play', async (_event, nickname) => {
   const pattern = new RegExp(config.nicknamePattern || '^[A-Za-z0-9_]{3,16}$');
   if (!pattern.test(nickname || '')) {
     return { ok: false, error: 'Ник должен быть 3–16 символов: латиница, цифры и подчёркивание.' };
   }
 
-  const profileDir = path.join(app.getPath('userData'), 'engine');
   const log = (line) => send('engine:log', line);
+  const onProgress = (fraction) => send('engine:progress', fraction);
 
   try {
-    await prepare({ config, profileDir, packSource: config.packUrl, onLog: log });
-    await syncPack({ config, profileDir, onLog: log });
-
-    const result = await launch({
-      config,
-      nickname,
-      profileDir,
-      onLog: log,
-    });
+    log(`Ник: ${nickname}`);
+    const result = await play({ config, nickname, onLog: log, onProgress });
     return { ok: true, ...result };
   } catch (err) {
-    send('engine:log', `ОШИБКА: ${err.message}`);
+    log(`ОШИБКА: ${err.message}`);
     return { ok: false, error: err.message };
   }
 });
