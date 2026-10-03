@@ -54,6 +54,10 @@ ipcMain.handle('engine:play', async (_event, nickname) => {
   try {
     log(`Ник: ${nickname}`);
     const result = await play({ config, nickname, onLog: log, onProgress });
+    if (result.launched) {
+      log('Игра запущена. Закрываем лаунчер.');
+      app.quit();
+    }
     return { ok: true, ...result };
   } catch (err) {
     log(`ОШИБКА: ${err.message}`);

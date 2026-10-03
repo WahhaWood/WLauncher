@@ -60,11 +60,8 @@ async function play({ config, nickname, onLog, onProgress } = {}) {
     onLog: log,
   });
 
-  // The game is running — our job is done, close the launcher.
-  log('Игра запущена. Закрываем лаунчер.');
-  app.quit();
-
-  return { pid: child?.pid ?? null };
+  // The game is running — tell the caller (main.js) so it can close the launcher.
+  return { pid: child?.pid ?? null, launched: true };
 }
 
 function runProcess(executable, args, { cwd, onLog = () => {} } = {}) {
