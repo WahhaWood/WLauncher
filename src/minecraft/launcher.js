@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { execFileAsync } = require('./java');
+const { MINECRAFT_VERSION } = require('./installer');
 
 const PLACEHOLDERS = {
   auth_player_name: '${auth_player_name}',
@@ -48,6 +49,7 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
   const objectsDir = path.join(assetsDir, 'objects');
   const librariesDir = path.join(gameDir, 'libraries');
   const indexesDir = path.join(assetsDir, 'indexes');
+  const versionsDir = path.join(gameDir, 'versions');
 
   fs.mkdirSync(nativesDir, { recursive: true });
   fs.mkdirSync(objectsDir, { recursive: true });
@@ -57,6 +59,12 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
   // --- Libraries ---
   const libs = (versionJson.libraries || []).filter((lib) => matchesRules(lib.rules));
   const classpathEntries = [];
+
+  // The client jar itself must be on the classpath
+  const clientJar = path.join(versionsDir, MINECRAFT_VERSION, `${MINECRAFT_VERSION}.jar`);
+  if (fs.existsSync(clientJar)) {
+    classpathEntries.push(clientJar);
+  }
 
   for (let i = 0; i < libs.length; i++) {
     const lib = libs[i];
@@ -139,38 +147,41 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
     [PLACEHOLDERS.quickPlayPath]: '',
     [PLACEHOLDERS.quickPlayRealms]: '',
     [PLACEHOLDERS.quickPlaySingleplayer]: '',
-    [PLACEHOLDERS.resolution_height]: '',
-    [PLACEHOLDERS.resolution_width]: '',
+    [PLACEHOLDERS.resolution_height]: '1080',
+    [PLACEHOLDERS.resolution_width]: '1920',
   };
 
-  const args = [];
-  const jvmArgs = versionJson.arguments?.jvm || [];
-  const gameArgs = versionJson.arguments?.game || [];
+  const jvmArgs = [];
+  const gameArgs = [];
 
-  for (const arg of jvmArgs) {
-    if (typeof arg === 'string') args.push(substitute(arg, values));
+  for (const arg of versionJson.arguments?.jvm || []) {
+    if (typeof arg === 'string') jvmArgs.push(substitute(arg, values));
     else if (arg.rules && !matchesRules(arg.rules)) continue;
-    else if (typeof arg.value === 'string') args.push(substitute(arg.value, values));
-    else if (Array.isArray(arg.value)) args.push(...arg.value.map((v) => substitute(v, values)));
+    else if (typeof arg.value === 'string') jvmArgs.push(substitute(arg.value, values));
+    else if (Array.isArray(arg.value)) jvmArgs.push(...arg.value.map((v) => substitute(v, values)));
   }
 
-  for (const arg of gameArgs) {
-    if (typeof arg === 'string') args.push(substitute(arg, values));
+  for (const arg of versionJson.arguments?.game || []) {
+    if (typeof arg === 'string') gameArgs.push(substitute(arg, values));
     else if (arg.rules && !matchesRules(arg.rules)) continue;
-    else if (typeof arg.value === 'string') args.push(substitute(arg.value, values));
-    else if (Array.isArray(arg.value)) args.push(...arg.value.map((v) => substitute(v, values)));
+    else if (typeof arg.value === 'string') gameArgs.push(substitute(arg.value, values));
+    else if (Array.isArray(arg.value)) gameArgs.push(...arg.value.map((v) => substitute(v, values)));
   }
 
-  // Auto-join the server
+  // Auto-join the server (remove any vanilla quickPlay args first to avoid duplicates)
+  const filteredGameArgs = gameArgs.filter((a) => !a.startsWith('--quickPlay'));
   if (server) {
-    args.push('--quickPlayMultiplayer', server);
+    filteredGameArgs.push('--quickPlayMultiplayer', server);
   }
 
   const mainClass = versionJson.mainClass;
   if (!mainClass) throw new Error('mainClass не найден в version json');
 
+  // JVM options first, then the main class, then game arguments
+  const fullArgs = [...jvmArgs, mainClass, ...filteredGameArgs];
+
   onLog?.(`Запуск: ${mainClass}`);
-  return { java, args, mainClass, gameDir };
+  return { java, args: fullArgs, mainClass, gameDir };
 }
 
 function substitute(template, values) {

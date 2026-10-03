@@ -54,26 +54,22 @@ async function ensureJava({ onLog, onProgress } = {}) {
 }
 
 function findJava(root) {
-  for (const dir of walk(root, 4)) {
+  const queue = [root];
+  while (queue.length > 0) {
+    const dir = queue.shift();
     const name = process.platform === 'win32' ? 'javaw.exe' : 'java';
-    const candidate = path.join(dir, name);
-    if (fs.existsSync(candidate)) return candidate;
+    if (fs.existsSync(path.join(dir, name))) {
+      return path.join(dir, name);
+    }
+    try {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        if (entry.isDirectory()) queue.push(path.join(dir, entry.name));
+      }
+    } catch {
+      // ignore unreadable directories
+    }
   }
   return null;
-}
-
-function* walk(dir, depth = 0) {
-  if (depth > 4) return;
-  let entries = [];
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return;
-  }
-  yield dir;
-  for (const entry of entries) {
-    if (entry.isDirectory()) yield* walk(path.join(dir, entry.name), depth + 1);
-  }
 }
 
 function execFileAsync(cmd, args) {
