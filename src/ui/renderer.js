@@ -17,7 +17,7 @@ let running = false;
 const DEFAULT_SETTINGS = {
   gameDir: '',
   minRam: 1024,
-  maxRam: 4096,
+  maxRam: 2048,
   width: 1920,
   height: 1080,
   jvmArgs: '',
@@ -138,4 +138,9 @@ settingsSave.addEventListener('click', () => {
 
 settingsModal.addEventListener('click', (event) => {
   if (event.target === settingsModal) settingsModal.classList.remove('visible');
+});
+
+// Open the launcher log folder
+document.getElementById('logs-btn').addEventListener('click', () => {
+  window.wlauncher.openLogs();
 });

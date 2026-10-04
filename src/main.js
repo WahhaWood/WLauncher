@@ -1,11 +1,28 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 const config = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config.json'), 'utf8'));
 const { play } = require('./engine');
 
 let mainWindow = null;
+
+// Everything the launcher prints also goes to a log file next to the launcher
+// data, so failures can be diagnosed without reading the in-app console.
+function logPath() {
+  const dir = path.join(app.getPath('userData'), 'logs');
+  fs.mkdirSync(dir, { recursive: true });
+  return path.join(dir, 'launcher.log');
+}
+
+function appendLogFile(line) {
+  try {
+    fs.appendFileSync(logPath(), `[${new Date().toISOString()}] ${line}\n`, 'utf8');
+  } catch {
+    // logging must never break the launcher
+  }
+}
 
 function send(channel, payload) {
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -48,7 +65,14 @@ ipcMain.handle('engine:play', async (_event, nickname, settings) => {
     return { ok: false, error: 'Ник должен быть 3–16 символов: латиница, цифры и подчёркивание.' };
   }
 
-  const log = (line) => send('engine:log', line);
+  const started = new Date();
+  appendLogFile(`=== Запуск ${started.toISOString()} | ник: ${nickname} | настройки: ${JSON.stringify(settings || {})}`);
+  appendLogFile(`ОС: ${os.type()} ${os.release()} | RAM: ${(os.totalmem() / 1024 ** 3).toFixed(1)} ГБ | лог: ${logPath()}`);
+
+  const log = (line) => {
+    appendLogFile(line);
+    send('engine:log', line);
+  };
   const onProgress = (fraction) => send('engine:progress', fraction);
 
   try {
@@ -63,4 +87,8 @@ ipcMain.handle('engine:play', async (_event, nickname, settings) => {
     log(`ОШИБКА: ${err.message}`);
     return { ok: false, error: err.message };
   }
+});
+
+ipcMain.handle('app:open-logs', () => {
+  shell.showItemInFolder(logPath());
 });

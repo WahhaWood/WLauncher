@@ -54,12 +54,13 @@ async function ensureJava({ onLog, onProgress } = {}) {
 }
 
 function findJava(root) {
+  const names = process.platform === 'win32' ? ['java.exe', 'javaw.exe'] : ['java'];
   const queue = [root];
   while (queue.length > 0) {
     const dir = queue.shift();
-    const name = process.platform === 'win32' ? 'javaw.exe' : 'java';
-    if (fs.existsSync(path.join(dir, name))) {
-      return path.join(dir, name);
+    for (const name of names) {
+      const candidate = path.join(dir, name);
+      if (fs.existsSync(candidate)) return candidate;
     }
     try {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {

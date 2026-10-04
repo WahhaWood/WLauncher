@@ -159,13 +159,19 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
     jvmArgs.push(...settings.jvmArgs.split(/\s+/).filter(Boolean));
   }
 
-  // RAM settings
-  if (settings.minRam) {
-    jvmArgs.push(`-Xms${settings.minRam}M`);
+  // RAM settings. Never allocate more than the machine can actually give:
+  // a 4 GB VM with -Xmx4096M makes the JVM die before the game even starts.
+  const totalMb = Math.floor(os.totalmem() / 1024 / 1024);
+  const safeMax = Math.max(1024, totalMb - 1536);
+  let maxRam = settings.maxRam || 2048;
+  let minRam = settings.minRam || 512;
+  if (maxRam > safeMax) {
+    onLog?.(`ОЗУ: запрошено ${maxRam} МБ, но на машине всего ${totalMb} МБ — снижаю до ${safeMax} МБ.`);
+    maxRam = safeMax;
   }
-  if (settings.maxRam) {
-    jvmArgs.push(`-Xmx${settings.maxRam}M`);
-  }
+  if (minRam > maxRam) minRam = maxRam;
+  jvmArgs.push(`-Xms${minRam}M`, `-Xmx${maxRam}M`);
+  onLog?.(`Память: -Xms${minRam}M -Xmx${maxRam}M (всего ОЗУ ${totalMb} МБ)`);
 
   for (const arg of versionJson.arguments?.jvm || []) {
     if (typeof arg === 'string') jvmArgs.push(substitute(arg, values));

@@ -55,31 +55,51 @@ async function play({ config, nickname, settings = {}, onLog, onProgress } = {})
     });
   }
 
-  // 5. Launch
+  // 5. Launch: wait a bit to make sure the JVM didn't die instantly
   log('Запуск игры…');
   const child = await runProcess(launch.java, launch.args, {
     cwd: launch.gameDir,
     onLog: log,
+    watchFor: 12000,
   });
 
   // The game is running — tell the caller (main.js) so it can close the launcher.
   return { pid: child?.pid ?? null, launched: true };
 }
 
-function runProcess(executable, args, { cwd, onLog = () => {} } = {}) {
+function runProcess(executable, args, { cwd, onLog = () => {}, watchFor = 0 } = {}) {
   if (DRY_RUN) {
     onLog(`[dry-run] ${executable} ${args.slice(0, 6).join(' ')}…`);
     return Promise.resolve(null);
   }
 
   return new Promise((resolve, reject) => {
-    const child = spawn(executable, args, { cwd, windowsHide: false });
+    const child = spawn(executable, args, { cwd, windowsHide: true });
     const forward = (chunk) => String(chunk).split(/\r?\n/).filter(Boolean).forEach(onLog);
 
     child.stdout.on('data', forward);
     child.stderr.on('data', forward);
     child.on('error', reject);
-    child.on('spawn', () => resolve(child));
+
+    if (watchFor > 0) {
+      // Give the game time to crash if it's going to. If it survives, we're good.
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          resolve(child);
+        }
+      }, watchFor);
+      child.on('exit', (code) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          reject(new Error(`Игра завершилась сразу после запуска (код ${code}). Смотри лог выше — там причина.`));
+        }
+      });
+    } else {
+      child.on('spawn', () => resolve(child));
+    }
   });
 }
 
