@@ -12,13 +12,12 @@ const NEOFORGE_INSTALLER_URL = `https://maven.neoforged.net/releases/net/neoforg
  * The NeoForge installer produces a self-contained version json that we read
  * back to build the launch command.
  */
-async function ensureGame({ java, onLog, onProgress } = {}) {
+async function ensureGame({ java, gameDir, onLog, onProgress } = {}) {
   if (process.env.WLAUNCHER_DRY_RUN === '1') {
     onLog?.('[dry-run] Minecraft 26.1.2 + NeoForge 26.1.2.114 (пропуск)');
-    return { gameDir: '/tmp/opencode/game', versionJson: { id: 'neoforge-26.1.2.114', mainClass: 'net.neoforged.fml.startup.Client', arguments: { jvm: [], game: [] }, libraries: [], assetIndex: { id: '30', url: 'https://example.com/30.json' } } };
+    return { gameDir: gameDir || '/tmp/opencode/game', versionJson: { id: 'neoforge-26.1.2.114', mainClass: 'net.neoforged.fml.startup.Client', arguments: { jvm: [], game: [] }, libraries: [], assetIndex: { id: '30', url: 'https://example.com/30.json' } } };
   }
 
-  const gameDir = path.join(os.homedir(), '.wlauncher', 'game');
   const versionsDir = path.join(gameDir, 'versions');
   const mcDir = path.join(versionsDir, MINECRAFT_VERSION);
   const nfDir = path.join(versionsDir, `neoforge-${NEOFORGE_VERSION}`);

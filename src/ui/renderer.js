@@ -5,9 +5,59 @@ const hint = document.getElementById('hint');
 const subtitle = document.getElementById('subtitle');
 const progressBar = document.getElementById('progress');
 const progressFill = document.getElementById('progress-fill');
+const settingsBtn = document.getElementById('settings-btn');
+const settingsModal = document.getElementById('settings-modal');
+const settingsSave = document.getElementById('settings-save');
+const settingsCancel = document.getElementById('settings-cancel');
 
 const STORAGE_KEY = 'wlauncher.nickname';
+const SETTINGS_KEY = 'wlauncher.settings';
 let running = false;
+
+const DEFAULT_SETTINGS = {
+  gameDir: '',
+  minRam: 1024,
+  maxRam: 4096,
+  width: 1920,
+  height: 1080,
+  jvmArgs: '',
+  fullscreen: false,
+};
+
+function loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}');
+    return { ...DEFAULT_SETTINGS, ...saved };
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+
+function saveSettings(settings) {
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+function applySettingsToForm(settings) {
+  document.getElementById('setting-game-dir').value = settings.gameDir || '';
+  document.getElementById('setting-min-ram').value = settings.minRam;
+  document.getElementById('setting-max-ram').value = settings.maxRam;
+  document.getElementById('setting-width').value = settings.width;
+  document.getElementById('setting-height').value = settings.height;
+  document.getElementById('setting-jvm-args').value = settings.jvmArgs || '';
+  document.getElementById('setting-fullscreen').checked = settings.fullscreen;
+}
+
+function readSettingsFromForm() {
+  return {
+    gameDir: document.getElementById('setting-game-dir').value.trim(),
+    minRam: parseInt(document.getElementById('setting-min-ram').value, 10) || DEFAULT_SETTINGS.minRam,
+    maxRam: parseInt(document.getElementById('setting-max-ram').value, 10) || DEFAULT_SETTINGS.maxRam,
+    width: parseInt(document.getElementById('setting-width').value, 10) || DEFAULT_SETTINGS.width,
+    height: parseInt(document.getElementById('setting-height').value, 10) || DEFAULT_SETTINGS.height,
+    jvmArgs: document.getElementById('setting-jvm-args').value.trim(),
+    fullscreen: document.getElementById('setting-fullscreen').checked,
+  };
+}
 
 function appendLog(line) {
   const stamp = new Date().toLocaleTimeString('ru-RU', { hour12: false });
@@ -60,10 +110,32 @@ playButton.addEventListener('click', async () => {
   setProgress(0);
   setRunning(true);
 
-  const result = await window.wlauncher.play(nickname);
+  const settings = loadSettings();
+  const result = await window.wlauncher.play(nickname, settings);
   if (!result.ok) {
     hint.textContent = result.error;
     setRunning(false);
     setProgress(null);
   }
+});
+
+// Settings modal
+settingsBtn.addEventListener('click', () => {
+  applySettingsToForm(loadSettings());
+  settingsModal.classList.add('visible');
+});
+
+settingsCancel.addEventListener('click', () => {
+  settingsModal.classList.remove('visible');
+});
+
+settingsSave.addEventListener('click', () => {
+  const settings = readSettingsFromForm();
+  saveSettings(settings);
+  settingsModal.classList.remove('visible');
+  appendLog('Настройки сохранены.');
+});
+
+settingsModal.addEventListener('click', (event) => {
+  if (event.target === settingsModal) settingsModal.classList.remove('visible');
 });

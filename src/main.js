@@ -42,7 +42,7 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => app.quit());
 
-ipcMain.handle('engine:play', async (_event, nickname) => {
+ipcMain.handle('engine:play', async (_event, nickname, settings) => {
   const pattern = new RegExp(config.nicknamePattern || '^[A-Za-z0-9_]{3,16}$');
   if (!pattern.test(nickname || '')) {
     return { ok: false, error: 'Ник должен быть 3–16 символов: латиница, цифры и подчёркивание.' };
@@ -53,7 +53,7 @@ ipcMain.handle('engine:play', async (_event, nickname) => {
 
   try {
     log(`Ник: ${nickname}`);
-    const result = await play({ config, nickname, onLog: log, onProgress });
+    const result = await play({ config, nickname, settings, onLog: log, onProgress });
     if (result.launched) {
       log('Игра запущена. Закрываем лаунчер.');
       app.quit();

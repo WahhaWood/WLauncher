@@ -124,6 +124,83 @@ button:disabled {
   transition: width 0.3s;
 }
 
+footer {
+  text-align: center;
+}
+
+button.secondary {
+  background: #2b3040;
+  color: var(--text);
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+button.secondary:hover {
+  background: #363c4e;
+}
+
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-overlay.visible {
+  display: flex;
+}
+
+.modal {
+  background: var(--panel);
+  border: 1px solid #2b3040;
+  border-radius: 14px;
+  padding: 24px;
+  width: 380px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.modal h2 {
+  margin: 0 0 18px;
+  font-size: 18px;
+}
+
+.field-row {
+  display: flex;
+  gap: 12px;
+}
+
+.field-row .field {
+  flex: 1;
+}
+
+.checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0;
+  cursor: pointer;
+}
+
+.checkbox input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.modal-actions button {
+  flex: 1;
+}
+
 .log-wrap {
   flex: 1;
   min-height: 120px;

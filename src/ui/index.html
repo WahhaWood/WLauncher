@@ -33,7 +33,60 @@
       <section class="log-wrap">
         <pre id="log" aria-live="polite"></pre>
       </section>
+
+      <footer>
+        <button id="settings-btn" type="button" class="secondary">Настройки</button>
+      </footer>
     </main>
+
+    <div class="modal-overlay" id="settings-modal">
+      <div class="modal">
+        <h2>Настройки</h2>
+
+        <label class="field">
+          <span>Папка сборки</span>
+          <input id="setting-game-dir" type="text" placeholder="По умолчанию" />
+        </label>
+
+        <div class="field-row">
+          <label class="field">
+            <span>Мин. ОЗУ (МБ)</span>
+            <input id="setting-min-ram" type="number" min="512" max="32768" step="512" />
+          </label>
+          <label class="field">
+            <span>Макс. ОЗУ (МБ)</span>
+            <input id="setting-max-ram" type="number" min="512" max="32768" step="512" />
+          </label>
+        </div>
+
+        <div class="field-row">
+          <label class="field">
+            <span>Ширина</span>
+            <input id="setting-width" type="number" min="640" max="7680" step="1" />
+          </label>
+          <label class="field">
+            <span>Высота</span>
+            <input id="setting-height" type="number" min="480" max="4320" step="1" />
+          </label>
+        </div>
+
+        <label class="field">
+          <span>JVM-аргументы (дополнительные)</span>
+          <input id="setting-jvm-args" type="text" placeholder="-XX:+UseG1GC" />
+        </label>
+
+        <label class="checkbox">
+          <input id="setting-fullscreen" type="checkbox" />
+          <span>Полноэкранный режим</span>
+        </label>
+
+        <div class="modal-actions">
+          <button id="settings-save" type="button">Сохранить</button>
+          <button id="settings-cancel" type="button" class="secondary">Отмена</button>
+        </div>
+      </div>
+    </div>
+
     <script src="renderer.js"></script>
   </body>
 </html>

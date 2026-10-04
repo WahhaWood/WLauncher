@@ -21,8 +21,9 @@ function instanceDir() {
  * Full play flow: java → minecraft+neoforge → assets → packwiz sync → launch.
  * Every step is idempotent and reports progress.
  */
-async function play({ config, nickname, onLog, onProgress } = {}) {
+async function play({ config, nickname, settings = {}, onLog, onProgress } = {}) {
   const log = (line) => onLog?.(line);
+  const gameDir = settings.gameDir || path.join(os.homedir(), '.wlauncher', 'game');
 
   // 1. Java
   log('Проверка Java…');
@@ -30,16 +31,17 @@ async function play({ config, nickname, onLog, onProgress } = {}) {
 
   // 2. Minecraft + NeoForge
   log('Проверка Minecraft…');
-  const { versionJson } = await ensureGame({ java, onLog: log, onProgress });
+  const { versionJson } = await ensureGame({ java, gameDir, onLog: log, onProgress });
 
   // 3. Assets + libraries + launch command
   log('Подготовка запуска…');
   const launch = await prepareAndLaunch({
     java,
     versionJson,
-    gameDir: gameDir(),
+    gameDir,
     nickname,
     server: config.server,
+    settings,
     onLog: log,
     onProgress,
   });
@@ -48,7 +50,7 @@ async function play({ config, nickname, onLog, onProgress } = {}) {
   if (config.packUrl) {
     log('Синхронизация сборки…');
     await runProcess(java, ['-jar', PACKWIZ_BOOTSTRAP, config.packUrl], {
-      cwd: instanceDir(),
+      cwd: path.join(gameDir, 'instances', 'WLauncher'),
       onLog: log,
     });
   }

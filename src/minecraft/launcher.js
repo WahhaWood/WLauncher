@@ -38,7 +38,7 @@ const PLACEHOLDERS = {
  * the final launch command. Libraries are filtered by OS rules, natives are
  * extracted, assets are fetched by hash.
  */
-async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, onLog, onProgress } = {}) {
+async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, settings = {}, onLog, onProgress } = {}) {
   if (process.env.WLAUNCHER_DRY_RUN === '1') {
     onLog?.('[dry-run] Подготовка ассетов и библиотек (пропуск)');
     return { java, args: ['-cp', '<classpath>', 'net.neoforged.fml.startup.Client', '--username', nickname, '--quickPlayMultiplayer', server || ''], mainClass: 'net.neoforged.fml.startup.Client', gameDir };
@@ -147,12 +147,25 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
     [PLACEHOLDERS.quickPlayPath]: '',
     [PLACEHOLDERS.quickPlayRealms]: '',
     [PLACEHOLDERS.quickPlaySingleplayer]: '',
-    [PLACEHOLDERS.resolution_height]: '1080',
-    [PLACEHOLDERS.resolution_width]: '1920',
+    [PLACEHOLDERS.resolution_height]: String(settings.height || 1080),
+    [PLACEHOLDERS.resolution_width]: String(settings.width || 1920),
   };
 
   const jvmArgs = [];
   const gameArgs = [];
+
+  // Custom JVM args from settings
+  if (settings.jvmArgs) {
+    jvmArgs.push(...settings.jvmArgs.split(/\s+/).filter(Boolean));
+  }
+
+  // RAM settings
+  if (settings.minRam) {
+    jvmArgs.push(`-Xms${settings.minRam}M`);
+  }
+  if (settings.maxRam) {
+    jvmArgs.push(`-Xmx${settings.maxRam}M`);
+  }
 
   for (const arg of versionJson.arguments?.jvm || []) {
     if (typeof arg === 'string') jvmArgs.push(substitute(arg, values));
@@ -176,6 +189,11 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
 
   // Remove --demo flag and empty arguments
   const cleanGameArgs = filteredGameArgs.filter((a) => a && a !== '--demo');
+
+  // Fullscreen
+  if (settings.fullscreen) {
+    cleanGameArgs.push('--fullscreen', 'true');
+  }
 
   const mainClass = versionJson.mainClass;
   if (!mainClass) throw new Error('mainClass не найден в version json');
