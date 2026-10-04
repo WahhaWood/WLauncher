@@ -223,6 +223,10 @@ input:focus {
   margin-top: -4px;
 }
 
+.progress:not(.visible) {
+  display: none;
+}
+
 .progress.visible {
   opacity: 1;
 }
@@ -246,12 +250,20 @@ input:focus {
   text-overflow: ellipsis;
 }
 
+.status-line:empty {
+  display: none;
+}
+
 .hint {
   margin: -6px 0 0;
   min-height: 16px;
   color: var(--danger);
   font-size: 12.5px;
   text-align: center;
+}
+
+.hint:empty {
+  display: none;
 }
 
 /* ---------- Console ---------- */
