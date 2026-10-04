@@ -4,15 +4,19 @@ const logBox = document.getElementById('log');
 const hint = document.getElementById('hint');
 const statusLine = document.getElementById('status-line');
 const subtitle = document.getElementById('subtitle');
+const serverDot = document.getElementById('server-dot');
+const versionTag = document.getElementById('version-tag');
 const progressBar = document.getElementById('progress');
 const progressFill = document.getElementById('progress-fill');
 const settingsBtn = document.getElementById('settings-btn');
 const settingsModal = document.getElementById('settings-modal');
 const settingsSave = document.getElementById('settings-save');
 const settingsCancel = document.getElementById('settings-cancel');
+const settingsCancelX = document.getElementById('settings-cancel-x');
 const gameDirBtn = document.getElementById('game-dir-btn');
 const syncBtn = document.getElementById('sync-btn');
 const logsBtn = document.getElementById('logs-btn');
+const consoleClear = document.getElementById('console-clear');
 
 const STORAGE_KEY = 'wlauncher.nickname';
 const SETTINGS_KEY = 'wlauncher.settings';
@@ -85,27 +89,36 @@ function setProgress(fraction) {
 function setRunning(value) {
   running = value;
   playButton.disabled = value;
-  playButton.textContent = value ? 'Запуск…' : 'Играть';
+  playButton.querySelector('span').textContent = value ? 'Запуск…' : 'Играть';
   if (!value) statusLine.textContent = '';
 }
 
 async function updateServerStatus() {
-  const status = await window.wlauncher.serverStatus();
-  if (!status.configured) {
+  try {
+    const status = await window.wlauncher.serverStatus();
+    if (!status.configured) {
+      subtitle.textContent = 'Сборка WLauncher';
+      serverDot.className = 'dot';
+      return;
+    }
+    if (status.online) {
+      const players = status.players ? ` · ${status.players.online}/${status.players.max}` : '';
+      subtitle.textContent = `${status.address} · онлайн${players} · ${status.latency} мс`;
+      serverDot.className = 'dot online';
+    } else {
+      subtitle.textContent = `${status.address} · офлайн`;
+      serverDot.className = 'dot offline';
+    }
+  } catch {
     subtitle.textContent = 'Сборка WLauncher';
-    return;
-  }
-  if (status.online) {
-    const players = status.players ? ` · ${status.players.online}/${status.players.max}` : '';
-    subtitle.textContent = `${status.address} · онлайн${players} · ${status.latency} мс`;
-  } else {
-    subtitle.textContent = `${status.address} · офлайн`;
+    serverDot.className = 'dot';
   }
 }
 
 window.wlauncher.onLog(appendLog);
 window.wlauncher.onProgress(setProgress);
-window.wlauncher.onConfig(async () => {
+window.wlauncher.onConfig(async (config) => {
+  if (config.version) versionTag.textContent = `v${config.version}`;
   await updateServerStatus();
 });
 
@@ -153,6 +166,7 @@ function closeSettings() {
 }
 
 settingsCancel.addEventListener('click', closeSettings);
+settingsCancelX.addEventListener('click', closeSettings);
 
 settingsSave.addEventListener('click', () => {
   const settings = readSettingsFromForm();
@@ -165,19 +179,17 @@ settingsModal.addEventListener('click', (event) => {
   if (event.target === settingsModal) closeSettings();
 });
 
-// Footer actions
+// Toolbar actions
 gameDirBtn.addEventListener('click', () => {
   window.wlauncher.openGameDir(loadSettings());
 });
 
 syncBtn.addEventListener('click', async () => {
   syncBtn.disabled = true;
-  syncBtn.textContent = 'Проверка…';
   try {
     await window.wlauncher.syncPack(loadSettings());
   } finally {
     syncBtn.disabled = false;
-    syncBtn.textContent = 'Проверить сборку';
   }
 });
 
@@ -185,7 +197,10 @@ logsBtn.addEventListener('click', () => {
   window.wlauncher.openLogs();
 });
 
-// Update the subtitle occasionally so the player count stays fresh
+consoleClear.addEventListener('click', () => {
+  logBox.textContent = '';
+});
+
 setInterval(() => {
   if (!running) updateServerStatus().catch(() => {});
 }, 60000);
