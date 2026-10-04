@@ -32,12 +32,13 @@ function send(channel, payload) {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 940,
+    width: 470,
     height: 620,
-    minWidth: 820,
-    minHeight: 560,
-    backgroundColor: '#0b0d12',
-    title: 'Wahha Launcher',
+    resizable: true,
+    maximizable: false,
+    autoHideMenuBar: true,
+    backgroundColor: '#14161c',
+    title: 'WLauncher',
     icon: path.join(__dirname, 'ui', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),

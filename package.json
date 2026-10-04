@@ -1,8 +1,8 @@
 {
-  "name": "wahha-launcher",
-  "productName": "Wahha Launcher",
+  "name": "wlauncher",
+  "productName": "WLauncher",
   "version": "0.2.0",
-  "description": "Wahha Launcher — лаунчер модовой сборки",
+  "description": "WLauncher — лаунчер модовой сборки",
   "author": "Wahha",
   "license": "MIT",
   "private": true,
@@ -17,8 +17,8 @@
     "electron-builder": "^25.0.0"
   },
   "build": {
-    "appId": "ru.wahha.launcher",
-    "productName": "Wahha Launcher",
+    "appId": "ru.wlauncher.app",
+    "productName": "WLauncher",
     "directories": {
       "output": "dist"
     },

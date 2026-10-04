@@ -1,5 +1,5 @@
 {
-  "instanceId": "WahhaLauncher",
+  "instanceId": "WLauncher",
   "server": "",
   "packUrl": "",
   "nicknamePattern": "^[A-Za-z0-9_]{3,16}$"

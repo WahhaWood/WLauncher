@@ -3,19 +3,12 @@ const playButton = document.getElementById('play');
 const logBox = document.getElementById('log');
 const hint = document.getElementById('hint');
 const subtitle = document.getElementById('subtitle');
-const statusPill = document.getElementById('status-pill');
-const serverValue = document.getElementById('server-value');
-const packValue = document.getElementById('pack-value');
-const versionTag = document.getElementById('version-tag');
 const progressBar = document.getElementById('progress');
 const progressFill = document.getElementById('progress-fill');
 const settingsBtn = document.getElementById('settings-btn');
 const settingsModal = document.getElementById('settings-modal');
 const settingsSave = document.getElementById('settings-save');
 const settingsCancel = document.getElementById('settings-cancel');
-const settingsCancelX = document.getElementById('settings-cancel-x');
-const consoleClear = document.getElementById('console-clear');
-const logsBtn = document.getElementById('logs-btn');
 
 const STORAGE_KEY = 'wlauncher.nickname';
 const SETTINGS_KEY = 'wlauncher.settings';
@@ -72,11 +65,6 @@ function appendLog(line) {
   logBox.scrollTop = logBox.scrollHeight;
 }
 
-function setStatus(text, kind = '') {
-  statusPill.textContent = text;
-  statusPill.className = `status-pill ${kind}`.trim();
-}
-
 function setProgress(fraction) {
   if (fraction == null) {
     progressBar.classList.remove('visible');
@@ -90,21 +78,13 @@ function setRunning(value) {
   running = value;
   playButton.disabled = value;
   playButton.textContent = value ? 'Запуск…' : 'Играть';
-  if (value) setStatus('Запуск', 'busy');
 }
 
 window.wlauncher.onLog(appendLog);
 window.wlauncher.onProgress(setProgress);
 
 window.wlauncher.onConfig((config) => {
-  if (config.version) versionTag.textContent = `v${config.version}`;
-  if (config.server) {
-    serverValue.textContent = config.server;
-  }
-  if (config.packUrl) {
-    packValue.textContent = 'подключена';
-    packValue.title = config.packUrl;
-  }
+  if (config.server) subtitle.textContent = `Сервер: ${config.server}`;
 });
 
 nickInput.value = localStorage.getItem(STORAGE_KEY) || '';
@@ -134,9 +114,7 @@ playButton.addEventListener('click', async () => {
   const result = await window.wlauncher.play(nickname, settings);
   if (!result.ok) {
     hint.textContent = result.error;
-    subtitle.textContent = result.error;
     setRunning(false);
-    setStatus('Ошибка', 'error');
     setProgress(null);
   }
 });
@@ -147,28 +125,22 @@ settingsBtn.addEventListener('click', () => {
   settingsModal.classList.add('visible');
 });
 
-function closeSettings() {
+settingsCancel.addEventListener('click', () => {
   settingsModal.classList.remove('visible');
-}
-
-settingsCancel.addEventListener('click', closeSettings);
-settingsCancelX.addEventListener('click', closeSettings);
+});
 
 settingsSave.addEventListener('click', () => {
   const settings = readSettingsFromForm();
   saveSettings(settings);
-  closeSettings();
+  settingsModal.classList.remove('visible');
   appendLog('Настройки сохранены.');
 });
 
 settingsModal.addEventListener('click', (event) => {
-  if (event.target === settingsModal) closeSettings();
+  if (event.target === settingsModal) settingsModal.classList.remove('visible');
 });
 
-consoleClear.addEventListener('click', () => {
-  logBox.textContent = '';
-});
-
-logsBtn.addEventListener('click', () => {
+// Open the launcher log folder
+document.getElementById('logs-btn').addEventListener('click', () => {
   window.wlauncher.openLogs();
 });
