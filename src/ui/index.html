@@ -6,43 +6,95 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; style-src 'self'; script-src 'self'"
     />
-    <title>WLauncher</title>
+    <title>Wahha Launcher</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <main>
-      <header>
-        <div class="logo">W</div>
-        <h1>WLauncher</h1>
-        <p class="subtitle" id="subtitle">Сборка WLauncher</p>
-      </header>
+    <div class="app">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-logo">W</div>
+          <div class="brand-text">
+            <h1>Wahha</h1>
+            <p>Launcher <span class="version" id="version-tag"></span></p>
+          </div>
+        </div>
 
-      <label class="field">
-        <span>Ник на сервере</span>
-        <input id="nickname" type="text" maxlength="16" autocomplete="off" spellcheck="false" placeholder="Steve" />
-      </label>
+        <div class="sidebar-block">
+          <label class="field-label" for="nickname">Ник в игре</label>
+          <input
+            id="nickname"
+            type="text"
+            maxlength="16"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Steve"
+          />
+        </div>
 
-      <button id="play" type="button">Играть</button>
+        <button id="play" class="play-button" type="button">Играть</button>
 
-      <div class="progress" id="progress">
-        <div class="progress-fill" id="progress-fill"></div>
-      </div>
+        <div class="progress" id="progress">
+          <div class="progress-fill" id="progress-fill"></div>
+        </div>
+        <p class="hint" id="hint"></p>
 
-      <p class="hint" id="hint"></p>
+        <div class="sidebar-spacer"></div>
 
-      <section class="log-wrap">
-        <pre id="log" aria-live="polite"></pre>
-      </section>
+        <div class="sidebar-actions">
+          <button id="settings-btn" class="ghost-button" type="button">Настройки</button>
+          <button id="logs-btn" class="ghost-button" type="button">Логи</button>
+        </div>
+      </aside>
 
-      <footer>
-        <button id="settings-btn" type="button" class="secondary">Настройки</button>
-        <button id="logs-btn" type="button" class="secondary">Логи</button>
-      </footer>
-    </main>
+      <main class="content">
+        <header class="content-header">
+          <div>
+            <h2>Обзор</h2>
+            <p class="content-subtitle" id="subtitle">Готов к запуску</p>
+          </div>
+          <span class="status-pill" id="status-pill">Готов</span>
+        </header>
+
+        <section class="cards">
+          <div class="card">
+            <span class="card-title">Сервер</span>
+            <span class="card-value" id="server-value">не настроен</span>
+          </div>
+          <div class="card">
+            <span class="card-title">Сборка</span>
+            <span class="card-value" id="pack-value">не подключена</span>
+          </div>
+          <div class="card">
+            <span class="card-title">Minecraft</span>
+            <span class="card-value">26.1.2</span>
+          </div>
+          <div class="card">
+            <span class="card-title">Загрузчик</span>
+            <span class="card-value">NeoForge</span>
+          </div>
+          <div class="card">
+            <span class="card-title">Java</span>
+            <span class="card-value">Temurin 25</span>
+          </div>
+        </section>
+
+        <section class="console-card">
+          <header class="console-header">
+            <span>Консоль</span>
+            <button id="console-clear" class="mini-button" type="button">Очистить</button>
+          </header>
+          <pre id="log" aria-live="polite"></pre>
+        </section>
+      </main>
+    </div>
 
     <div class="modal-overlay" id="settings-modal">
       <div class="modal">
-        <h2>Настройки</h2>
+        <header class="modal-header">
+          <h2>Настройки</h2>
+          <button id="settings-cancel-x" class="icon-button" type="button">✕</button>
+        </header>
 
         <label class="field">
           <span>Папка сборки</span>

@@ -32,12 +32,12 @@ function send(channel, payload) {
 
 function createWindow() {
   mainWindow = new BrowserWindow({
-    width: 460,
-    height: 600,
-    resizable: false,
-    maximizable: false,
-    autoHideMenuBar: true,
-    backgroundColor: '#14161c',
+    width: 940,
+    height: 620,
+    minWidth: 820,
+    minHeight: 560,
+    backgroundColor: '#0b0d12',
+    title: 'Wahha Launcher',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -47,7 +47,11 @@ function createWindow() {
 
   mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile(path.join(__dirname, 'ui', 'index.html'));
-  mainWindow.webContents.send('config', { server: config.server });
+  mainWindow.webContents.send('config', {
+    server: config.server,
+    packUrl: config.packUrl,
+    version: app.getVersion(),
+  });
 }
 
 app.whenReady().then(() => {

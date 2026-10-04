@@ -50,7 +50,7 @@ async function play({ config, nickname, settings = {}, onLog, onProgress } = {})
   if (config.packUrl) {
     log('Синхронизация сборки…');
     await runProcess(java, ['-jar', PACKWIZ_BOOTSTRAP, config.packUrl], {
-      cwd: path.join(gameDir, 'instances', 'WLauncher'),
+      cwd: path.join(gameDir, 'instances', config.instanceId || 'WahhaLauncher'),
       onLog: log,
     });
   }
