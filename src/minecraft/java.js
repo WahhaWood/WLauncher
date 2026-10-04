@@ -1,19 +1,23 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execFile } = require('child_process');
+const { execFileAsync, download, humanBytes } = require('./util');
 
 const ADOPTIUM_API = 'https://api.adoptium.net/v3';
+const REQUIRED_MAJOR = 25;
 
 /**
- * Downloads a Temurin JRE and extracts it. Returns the path to the java binary.
- * Uses a single JRE for both the NeoForge installer and the game itself.
+ * Returns a path to a usable Java 25+.
+ * Order: system Java (PATH / common locations) -> previously downloaded -> download Temurin.
  */
 async function ensureJava({ onLog, onProgress } = {}) {
   if (process.env.WLAUNCHER_DRY_RUN === '1') {
     onLog?.('[dry-run] Java 25 (пропуск скачивания)');
     return 'java';
   }
+
+  const system = await findSystemJava(onLog);
+  if (system) return system;
 
   const dest = path.join(os.homedir(), '.wlauncher', 'jre');
   const marker = path.join(dest, 'ok.txt');
@@ -28,29 +32,78 @@ async function ensureJava({ onLog, onProgress } = {}) {
 
   const isWindows = process.platform === 'win32';
   const ext = isWindows ? 'zip' : 'tar.gz';
-  const url = `${ADOPTIUM_API}/binary/latest/25/ga/${process.platform === 'win32' ? 'windows' : 'linux'}/x64/jre/hotspot/normal/eclipse`;
-  const archive = path.join(dest, `jre25.${ext}`);
+  const platform = isWindows ? 'windows' : process.platform === 'darwin' ? 'mac' : 'linux';
+  const url = `${ADOPTIUM_API}/binary/latest/${REQUIRED_MAJOR}/ga/${platform}/x64/jre/hotspot/normal/eclipse`;
+  const archive = path.join(dest, `jre${REQUIRED_MAJOR}.${ext}`);
 
   fs.mkdirSync(dest, { recursive: true });
 
   onLog?.('Скачивание Java 25…');
-  await download(url, archive, onProgress);
+  let lastReported = 0;
+  await download(url, archive, (received, total) => {
+    onProgress?.(total ? received / total : 0);
+    if (received - lastReported > 5 * 1024 * 1024) {
+      lastReported = received;
+      onLog?.(`Java: ${humanBytes(received)}${total ? ` / ${humanBytes(total)}` : ''}`);
+    }
+  });
 
   onLog?.('Распаковка Java…');
-  fs.rmSync(path.join(dest, 'jdk-25'), { recursive: true, force: true });
-  if (isWindows) {
-    await execFileAsync('tar', ['-xf', archive, '-C', dest]);
-  } else {
-    await execFileAsync('tar', ['-xzf', archive, '-C', dest]);
-  }
+  fs.rmSync(path.join(dest, `jdk-${REQUIRED_MAJOR}`), { recursive: true, force: true });
+  await execFileAsync('tar', [isWindows ? '-xf' : '-xzf', archive, '-C', dest]);
 
   const java = findJava(dest);
   if (!java) throw new Error('Java не найдена после распаковки');
 
   fs.writeFileSync(marker, java, 'utf8');
   fs.rmSync(archive, { force: true });
-  onLog?.('Java готова.');
+  onLog?.(`Java готова: ${humanBytes(fs.statSync(java).size)}`);
   return java;
+}
+
+/**
+ * Look for a suitable system Java. Returns the path or null.
+ */
+async function findSystemJava(onLog) {
+  const candidates = ['java'];
+  if (process.platform === 'win32') {
+    const roots = [
+      'C:\\Program Files\\Eclipse Adoptium',
+      'C:\\Program Files\\Java',
+      'C:\\Program Files\\Microsoft\\jdk',
+      path.join(os.homedir(), 'AppData', 'Local', 'Programs', 'Eclipse Adoptium'),
+    ];
+    for (const root of roots) {
+      if (!fs.existsSync(root)) continue;
+      try {
+        for (const entry of fs.readdirSync(root)) {
+          const exe = path.join(root, entry, 'bin', 'java.exe');
+          if (fs.existsSync(exe)) candidates.push(exe);
+        }
+      } catch {
+        // ignore
+      }
+    }
+  } else {
+    candidates.push('/usr/bin/java', '/usr/local/bin/java');
+  }
+
+  for (const candidate of candidates) {
+    try {
+      const { stderr } = await execFileAsync(candidate, ['-version']);
+      const match = String(stderr).match(/version "?(\d+)(?:\.(\d+))?/);
+      if (!match) continue;
+      let major = Number(match[1]);
+      if (major === 1 && match[2]) major = Number(match[2]); // legacy 1.8 format
+      if (major >= REQUIRED_MAJOR) {
+        onLog?.(`Найдена системная Java ${major} (${candidate}) — скачивание не нужно.`);
+        return candidate;
+      }
+    } catch {
+      // not usable, continue
+    }
+  }
+  return null;
 }
 
 function findJava(root) {
@@ -73,25 +126,4 @@ function findJava(root) {
   return null;
 }
 
-function execFileAsync(cmd, args) {
-  return new Promise((resolve, reject) => {
-    execFile(cmd, args, { windowsHide: true }, (err) => (err ? reject(err) : resolve()));
-  });
-}
-
-async function download(url, dest, onProgress) {
-  const res = await fetch(url, { redirect: 'follow' });
-  if (!res.ok) throw new Error(`HTTP ${res.status} для ${url}`);
-  const total = Number(res.headers.get('content-length')) || 0;
-  const file = fs.createWriteStream(dest);
-  let received = 0;
-  for await (const chunk of res.body) {
-    received += chunk.length;
-    file.write(chunk);
-    if (total && onProgress) onProgress(received / total);
-  }
-  file.end();
-  await new Promise((resolve, reject) => file.on('finish', resolve).on('error', reject));
-}
-
-module.exports = { ensureJava, findJava, download, execFileAsync };
+module.exports = { ensureJava, findJava, REQUIRED_MAJOR };

@@ -2,6 +2,7 @@ const nickInput = document.getElementById('nickname');
 const playButton = document.getElementById('play');
 const logBox = document.getElementById('log');
 const hint = document.getElementById('hint');
+const statusLine = document.getElementById('status-line');
 const subtitle = document.getElementById('subtitle');
 const progressBar = document.getElementById('progress');
 const progressFill = document.getElementById('progress-fill');
@@ -9,6 +10,9 @@ const settingsBtn = document.getElementById('settings-btn');
 const settingsModal = document.getElementById('settings-modal');
 const settingsSave = document.getElementById('settings-save');
 const settingsCancel = document.getElementById('settings-cancel');
+const gameDirBtn = document.getElementById('game-dir-btn');
+const syncBtn = document.getElementById('sync-btn');
+const logsBtn = document.getElementById('logs-btn');
 
 const STORAGE_KEY = 'wlauncher.nickname';
 const SETTINGS_KEY = 'wlauncher.settings';
@@ -22,6 +26,7 @@ const DEFAULT_SETTINGS = {
   height: 1080,
   jvmArgs: '',
   fullscreen: false,
+  aikarFlags: true,
 };
 
 function loadSettings() {
@@ -45,6 +50,7 @@ function applySettingsToForm(settings) {
   document.getElementById('setting-height').value = settings.height;
   document.getElementById('setting-jvm-args').value = settings.jvmArgs || '';
   document.getElementById('setting-fullscreen').checked = settings.fullscreen;
+  document.getElementById('setting-aikar').checked = settings.aikarFlags !== false;
 }
 
 function readSettingsFromForm() {
@@ -56,6 +62,7 @@ function readSettingsFromForm() {
     height: parseInt(document.getElementById('setting-height').value, 10) || DEFAULT_SETTINGS.height,
     jvmArgs: document.getElementById('setting-jvm-args').value.trim(),
     fullscreen: document.getElementById('setting-fullscreen').checked,
+    aikarFlags: document.getElementById('setting-aikar').checked,
   };
 }
 
@@ -63,6 +70,7 @@ function appendLog(line) {
   const stamp = new Date().toLocaleTimeString('ru-RU', { hour12: false });
   logBox.textContent += `[${stamp}] ${line}\n`;
   logBox.scrollTop = logBox.scrollHeight;
+  if (running) statusLine.textContent = line;
 }
 
 function setProgress(fraction) {
@@ -78,13 +86,27 @@ function setRunning(value) {
   running = value;
   playButton.disabled = value;
   playButton.textContent = value ? 'Запуск…' : 'Играть';
+  if (!value) statusLine.textContent = '';
+}
+
+async function updateServerStatus() {
+  const status = await window.wlauncher.serverStatus();
+  if (!status.configured) {
+    subtitle.textContent = 'Сборка WLauncher';
+    return;
+  }
+  if (status.online) {
+    const players = status.players ? ` · ${status.players.online}/${status.players.max}` : '';
+    subtitle.textContent = `${status.address} · онлайн${players} · ${status.latency} мс`;
+  } else {
+    subtitle.textContent = `${status.address} · офлайн`;
+  }
 }
 
 window.wlauncher.onLog(appendLog);
 window.wlauncher.onProgress(setProgress);
-
-window.wlauncher.onConfig((config) => {
-  if (config.server) subtitle.textContent = `Сервер: ${config.server}`;
+window.wlauncher.onConfig(async () => {
+  await updateServerStatus();
 });
 
 nickInput.value = localStorage.getItem(STORAGE_KEY) || '';
@@ -109,6 +131,7 @@ playButton.addEventListener('click', async () => {
   hint.textContent = '';
   setProgress(0);
   setRunning(true);
+  statusLine.textContent = 'Подготовка…';
 
   const settings = loadSettings();
   const result = await window.wlauncher.play(nickname, settings);
@@ -125,22 +148,44 @@ settingsBtn.addEventListener('click', () => {
   settingsModal.classList.add('visible');
 });
 
-settingsCancel.addEventListener('click', () => {
+function closeSettings() {
   settingsModal.classList.remove('visible');
-});
+}
+
+settingsCancel.addEventListener('click', closeSettings);
 
 settingsSave.addEventListener('click', () => {
   const settings = readSettingsFromForm();
   saveSettings(settings);
-  settingsModal.classList.remove('visible');
+  closeSettings();
   appendLog('Настройки сохранены.');
 });
 
 settingsModal.addEventListener('click', (event) => {
-  if (event.target === settingsModal) settingsModal.classList.remove('visible');
+  if (event.target === settingsModal) closeSettings();
 });
 
-// Open the launcher log folder
-document.getElementById('logs-btn').addEventListener('click', () => {
+// Footer actions
+gameDirBtn.addEventListener('click', () => {
+  window.wlauncher.openGameDir(loadSettings());
+});
+
+syncBtn.addEventListener('click', async () => {
+  syncBtn.disabled = true;
+  syncBtn.textContent = 'Проверка…';
+  try {
+    await window.wlauncher.syncPack(loadSettings());
+  } finally {
+    syncBtn.disabled = false;
+    syncBtn.textContent = 'Проверить сборку';
+  }
+});
+
+logsBtn.addEventListener('click', () => {
   window.wlauncher.openLogs();
 });
+
+// Update the subtitle occasionally so the player count stays fresh
+setInterval(() => {
+  if (!running) updateServerStatus().catch(() => {});
+}, 60000);

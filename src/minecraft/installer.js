@@ -1,11 +1,17 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { download, execFileAsync } = require('./java');
+const { download, execFileAsync, fetchJsonCached, humanBytes } = require('./util');
 
 const MINECRAFT_VERSION = '26.1.2';
 const NEOFORGE_VERSION = '26.1.2.114';
 const NEOFORGE_INSTALLER_URL = `https://maven.neoforged.net/releases/net/neoforged/neoforge/${NEOFORGE_VERSION}/neoforge-${NEOFORGE_VERSION}-installer.jar`;
+const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
+const MANIFEST_TTL = 3 * 60 * 60 * 1000; // 3 часа
+
+function cacheDir() {
+  return path.join(os.homedir(), '.wlauncher', 'cache');
+}
 
 /**
  * Installs vanilla Minecraft + NeoForge into a game directory.
@@ -29,17 +35,22 @@ async function ensureGame({ java, gameDir, onLog, onProgress } = {}) {
   if (!fs.existsSync(path.join(mcDir, `${MINECRAFT_VERSION}.json`))) {
     onLog?.('Скачивание Minecraft…');
     fs.mkdirSync(mcDir, { recursive: true });
-    const manifest = await fetchJson(
-      'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json'
-    );
+    const manifest = await fetchJsonCached(MANIFEST_URL, path.join(cacheDir(), 'version_manifest.json'), MANIFEST_TTL);
     const entry = manifest.versions.find((v) => v.id === MINECRAFT_VERSION);
     if (!entry) throw new Error(`Версия ${MINECRAFT_VERSION} не найдена в манифесте`);
 
-    const versionJson = await fetchJson(entry.url);
+    const versionJson = await fetchJsonCached(entry.url, path.join(cacheDir(), `version-${MINECRAFT_VERSION}.json`));
     fs.writeFileSync(path.join(mcDir, `${MINECRAFT_VERSION}.json`), JSON.stringify(versionJson));
 
     const clientJar = path.join(mcDir, `${MINECRAFT_VERSION}.jar`);
-    await download(versionJson.downloads.client.url, clientJar, onProgress);
+    let lastReported = 0;
+    await download(versionJson.downloads.client.url, clientJar, (received, total) => {
+      onProgress?.(total ? received / total : 0);
+      if (received - lastReported > 5 * 1024 * 1024) {
+        lastReported = received;
+        onLog?.(`Minecraft: ${humanBytes(received)}${total ? ` / ${humanBytes(total)}` : ''}`);
+      }
+    });
   }
 
   // 2. NeoForge installer
@@ -47,7 +58,7 @@ async function ensureGame({ java, gameDir, onLog, onProgress } = {}) {
     onLog?.('Установка NeoForge…');
     const installer = path.join(gameDir, 'neoforge-installer.jar');
     if (!fs.existsSync(installer)) {
-      await download(NEOFORGE_INSTALLER_URL, installer, onProgress);
+      await download(NEOFORGE_INSTALLER_URL, installer);
     }
 
     // The installer requires a vanilla launcher profile to exist
@@ -81,12 +92,6 @@ async function ensureGame({ java, gameDir, onLog, onProgress } = {}) {
 
   onLog?.('Minecraft + NeoForge готовы.');
   return { gameDir, versionJson: nfVersionJson };
-}
-
-async function fetchJson(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status} для ${url}`);
-  return res.json();
 }
 
 module.exports = { ensureGame, MINECRAFT_VERSION, NEOFORGE_VERSION };

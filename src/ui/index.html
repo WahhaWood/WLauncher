@@ -28,6 +28,7 @@
         <div class="progress-fill" id="progress-fill"></div>
       </div>
 
+      <p class="status-line" id="status-line"></p>
       <p class="hint" id="hint"></p>
 
       <section class="log-wrap">
@@ -35,8 +36,14 @@
       </section>
 
       <footer>
-        <button id="settings-btn" type="button" class="secondary">Настройки</button>
-        <button id="logs-btn" type="button" class="secondary">Логи</button>
+        <div class="footer-row">
+          <button id="settings-btn" type="button" class="secondary">Настройки</button>
+          <button id="logs-btn" type="button" class="secondary">Логи</button>
+        </div>
+        <div class="footer-row">
+          <button id="game-dir-btn" type="button" class="secondary">Открыть папку игры</button>
+          <button id="sync-btn" type="button" class="secondary">Проверить сборку</button>
+        </div>
       </footer>
     </main>
 
@@ -74,6 +81,11 @@
         <label class="field">
           <span>JVM-аргументы (дополнительные)</span>
           <input id="setting-jvm-args" type="text" placeholder="-XX:+UseG1GC" />
+        </label>
+
+        <label class="checkbox">
+          <input id="setting-aikar" type="checkbox" />
+          <span>Оптимизированные JVM-флаги (Aikar)</span>
         </label>
 
         <label class="checkbox">

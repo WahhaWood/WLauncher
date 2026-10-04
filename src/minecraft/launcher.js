@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execFileAsync } = require('./java');
+const { downloadPool, fetchJsonCached, extractZip, humanBytes } = require('./util');
 const { MINECRAFT_VERSION } = require('./installer');
 
 const PLACEHOLDERS = {
@@ -33,10 +33,31 @@ const PLACEHOLDERS = {
   resolution_width: '${resolution_width}',
 };
 
+// Aikar's flags: the community standard for smooth G1GC behaviour in Minecraft.
+const AIKAR_FLAGS = [
+  '-XX:+UseG1GC',
+  '-XX:+ParallelRefProcEnabled',
+  '-XX:MaxGCPauseMillis=200',
+  '-XX:+UnlockExperimentalVMOptions',
+  '-XX:+DisableExplicitGC',
+  '-XX:+AlwaysPreTouch',
+  '-XX:G1NewSizePercent=30',
+  '-XX:G1MaxNewSizePercent=40',
+  '-XX:G1HeapRegionSize=8M',
+  '-XX:G1ReservePercent=20',
+  '-XX:G1HeapWastePercent=5',
+  '-XX:G1MixedGCCountTarget=4',
+  '-XX:InitiatingHeapOccupancyPercent=15',
+  '-XX:G1MixedGCLiveThresholdPercent=90',
+  '-XX:G1RSetUpdatingPauseTimePercent=5',
+  '-XX:SurvivorRatio=32',
+  '-XX:+PerfDisableSharedMem',
+  '-XX:MaxTenuringThreshold=1',
+];
+
 /**
  * Downloads every library and asset the version json references, then builds
- * the final launch command. Libraries are filtered by OS rules, natives are
- * extracted, assets are fetched by hash.
+ * the final launch command. Libraries and assets are fetched in parallel.
  */
 async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, settings = {}, onLog, onProgress } = {}) {
   if (process.env.WLAUNCHER_DRY_RUN === '1') {
@@ -56,8 +77,7 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
   fs.mkdirSync(librariesDir, { recursive: true });
   fs.mkdirSync(indexesDir, { recursive: true });
 
-  // --- Libraries ---
-  const libs = (versionJson.libraries || []).filter((lib) => matchesRules(lib.rules));
+  const tasks = [];
   const classpathEntries = [];
 
   // The client jar itself must be on the classpath
@@ -66,56 +86,73 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
     classpathEntries.push(clientJar);
   }
 
-  for (let i = 0; i < libs.length; i++) {
-    const lib = libs[i];
+  // --- Libraries ---
+  const libs = (versionJson.libraries || []).filter((lib) => matchesRules(lib.rules));
+  const nativeKey = process.platform === 'win32' ? 'natives-windows' : process.platform === 'darwin' ? 'natives-macos' : 'natives-linux';
+
+  for (const lib of libs) {
     const artifact = lib.downloads?.artifact;
     if (!artifact) continue;
 
     const dest = path.join(librariesDir, artifact.path);
     if (!fs.existsSync(dest)) {
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-      await downloadWithRetry(artifact.url, dest);
+      tasks.push({ url: artifact.url, dest, kind: 'library' });
     }
     classpathEntries.push(dest);
 
-    // Natives: extract the classifier jar into the natives directory
-    const nativeKey = process.platform === 'win32' ? 'natives-windows' : process.platform === 'darwin' ? 'natives-macos' : 'natives-linux';
     const classifier = lib.natives?.[nativeKey];
     if (classifier) {
       const nativeArtifact = lib.downloads?.classifiers?.[classifier];
       if (nativeArtifact) {
         const nativeJar = path.join(librariesDir, nativeArtifact.path);
         if (!fs.existsSync(nativeJar)) {
-          fs.mkdirSync(path.dirname(nativeJar), { recursive: true });
-          await downloadWithRetry(nativeArtifact.url, nativeJar);
+          tasks.push({ url: nativeArtifact.url, dest: nativeJar, kind: 'library' });
         }
-        await extractZip(nativeJar, nativesDir);
+        tasks.push({ url: null, dest: nativeJar, extract: nativesDir, kind: 'native' });
       }
     }
-
-    onProgress?.((i + 1) / (libs.length + 1) * 0.6);
   }
 
   // --- Assets ---
   const assetIndex = versionJson.assetIndex;
   if (assetIndex) {
     const indexJson = await fetchJsonCached(assetIndex.url, path.join(indexesDir, `${assetIndex.id}.json`));
-    const objects = Object.values(indexJson.objects || {});
-    const total = objects.length;
-
-    for (let i = 0; i < total; i++) {
-      const obj = objects[i];
+    for (const obj of Object.values(indexJson.objects || {})) {
       const hash = obj.hash;
       const prefix = hash.slice(0, 2);
       const dest = path.join(objectsDir, prefix, hash);
       if (!fs.existsSync(dest)) {
-        fs.mkdirSync(path.dirname(dest), { recursive: true });
-        await downloadWithRetry(`https://resources.download.minecraft.net/${prefix}/${hash}`, dest);
+        tasks.push({ url: `https://resources.download.minecraft.net/${prefix}/${hash}`, dest, kind: 'asset' });
       }
-      if (i % 20 === 0) onProgress?.(0.6 + (i / total) * 0.4);
     }
   }
 
+  const toDownload = tasks.filter((t) => t.url);
+  const toExtract = tasks.filter((t) => t.extract);
+
+  if (toDownload.length > 0) {
+    onLog?.(`Скачивание файлов: ${toDownload.length} шт.`);
+    await downloadPool(toDownload, {
+      concurrency: 16,
+      onProgress: (state) => {
+        const fraction = state.total ? state.done / state.total : 1;
+        onProgress?.(fraction);
+        if (state.done % 25 === 0 || state.done === state.total) {
+          onLog?.(`Файлы: ${state.done}/${state.total} · ${humanBytes(state.bytes)}`);
+        }
+      },
+    });
+  }
+
+  // Extract natives after their jars are downloaded
+  for (const task of toExtract) {
+    if (fs.existsSync(task.dest)) {
+      await extractZip(task.dest, task.extract);
+    }
+  }
+
+  if (toDownload.length === 0) onLog?.('Все файлы уже на месте.');
+  onProgress?.(1);
   onLog?.('Все файлы скачаны.');
 
   // --- Build the launch command ---
@@ -154,11 +191,6 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
   const jvmArgs = [];
   const gameArgs = [];
 
-  // Custom JVM args from settings
-  if (settings.jvmArgs) {
-    jvmArgs.push(...settings.jvmArgs.split(/\s+/).filter(Boolean));
-  }
-
   // RAM settings. Never allocate more than the machine can actually give:
   // a 4 GB VM with -Xmx4096M makes the JVM die before the game even starts.
   const totalMb = Math.floor(os.totalmem() / 1024 / 1024);
@@ -171,7 +203,18 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
   }
   if (minRam > maxRam) minRam = maxRam;
   jvmArgs.push(`-Xms${minRam}M`, `-Xmx${maxRam}M`);
+
+  // Aikar's flags (on by default, can be disabled in settings)
+  if (settings.aikarFlags !== false) {
+    jvmArgs.push(...AIKAR_FLAGS);
+    onLog?.('JVM: применяю оптимизированные флаги (Aikar).');
+  }
   onLog?.(`Память: -Xms${minRam}M -Xmx${maxRam}M (всего ОЗУ ${totalMb} МБ)`);
+
+  // Custom JVM args from settings go last so they can override ours
+  if (settings.jvmArgs) {
+    jvmArgs.push(...settings.jvmArgs.split(/\s+/).filter(Boolean));
+  }
 
   for (const arg of versionJson.arguments?.jvm || []) {
     if (typeof arg === 'string') jvmArgs.push(substitute(arg, values));
@@ -237,47 +280,6 @@ function offlineUuidFor(nickname) {
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = bytes.toString('hex');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
-async function downloadWithRetry(url, dest, retries = 3) {
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const res = await fetch(url, { redirect: 'follow' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const file = fs.createWriteStream(dest);
-      for await (const chunk of res.body) file.write(chunk);
-      file.end();
-      await new Promise((resolve, reject) => file.on('finish', resolve).on('error', reject));
-      return;
-    } catch (err) {
-      if (attempt === retries) throw err;
-      await new Promise((r) => setTimeout(r, 1000 * attempt));
-    }
-  }
-}
-
-async function fetchJsonCached(url, cachePath) {
-  if (fs.existsSync(cachePath)) {
-    try {
-      return JSON.parse(fs.readFileSync(cachePath, 'utf8'));
-    } catch {
-      // fall through to download
-    }
-  }
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`HTTP ${res.status} для ${url}`);
-  const data = await res.json();
-  fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-  fs.writeFileSync(cachePath, JSON.stringify(data));
-  return data;
-}
-
-async function extractZip(zipPath, destDir) {
-  if (process.platform === 'win32') {
-    await execFileAsync('tar', ['-xf', zipPath, '-C', destDir]);
-  } else {
-    await execFileAsync('tar', ['-xf', zipPath, '-C', destDir]);
-  }
 }
 
 module.exports = { prepareAndLaunch, offlineUuidFor };
