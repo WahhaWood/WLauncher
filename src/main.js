@@ -38,6 +38,7 @@ function createWindow() {
     minHeight: 560,
     backgroundColor: '#0b0d12',
     title: 'Wahha Launcher',
+    icon: path.join(__dirname, 'ui', 'icon.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,

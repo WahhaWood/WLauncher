@@ -28,6 +28,7 @@
       "vendor/packwiz/**/*"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis",
         "portable"
