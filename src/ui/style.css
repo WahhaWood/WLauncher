@@ -1,8 +1,8 @@
 :root {
-  --bg: #0d0f15;
+  --bg: #0b0d13;
   --card: #141824;
-  --card-2: #191e2e;
-  --border: #232a3d;
+  --card-2: #1a1f2e;
+  --border: #242b3f;
   --text: #e9ecf5;
   --muted: #8a93ab;
   --accent: #6d9bff;
@@ -25,39 +25,25 @@ body {
   position: relative;
 }
 
-/* soft ambient glows */
-.glow {
+.header-glow {
   position: fixed;
-  border-radius: 50%;
-  filter: blur(90px);
-  opacity: 0.16;
+  top: -170px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 420px;
+  height: 300px;
+  background: radial-gradient(closest-side, rgba(109, 155, 255, 0.22), transparent);
   pointer-events: none;
   z-index: 0;
-}
-
-.glow-a {
-  width: 340px;
-  height: 340px;
-  top: -140px;
-  left: -100px;
-  background: var(--accent);
-}
-
-.glow-b {
-  width: 300px;
-  height: 300px;
-  bottom: -150px;
-  right: -110px;
-  background: var(--accent-2);
 }
 
 main {
   position: relative;
   z-index: 1;
-  padding: 22px 22px 18px;
+  padding: 20px 22px 16px;
   display: flex;
   flex-direction: column;
-  gap: 13px;
+  gap: 12px;
   height: 100vh;
 }
 
@@ -65,45 +51,113 @@ main {
 
 .topbar {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: 10px;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 10px;
   min-width: 0;
 }
 
 .mark {
   flex-shrink: 0;
-  margin-top: 2px;
-}
-
-.brand-text {
-  min-width: 0;
 }
 
 .brand h1 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 800;
-  letter-spacing: 2.5px;
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
 }
+
+.version {
+  color: var(--muted);
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  margin-left: 2px;
+  flex-shrink: 0;
+}
+
+/* ---------- Account ---------- */
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+.account-card {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 13px 14px;
+}
+
+.avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 4px 14px rgba(109, 155, 255, 0.3);
+  text-transform: uppercase;
+}
+
+.account-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.field-label {
+  display: block;
+  color: var(--muted);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  font-weight: 600;
+  margin-bottom: 5px;
+}
+
+input {
+  width: 100%;
+  background: var(--card-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 9px 12px;
+  color: var(--text);
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(109, 155, 255, 0.14);
+}
+
+/* ---------- Server status ---------- */
 
 .server-status {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 3px;
+  gap: 7px;
   color: var(--muted);
   font-size: 12px;
+  padding: 0 4px;
+  min-height: 17px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 300px;
 }
 
 .dot {
@@ -124,54 +178,6 @@ main {
   box-shadow: 0 0 7px rgba(255, 107, 122, 0.6);
 }
 
-.version {
-  color: var(--muted);
-  font-size: 11px;
-  padding: 3px 8px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  flex-shrink: 0;
-}
-
-/* ---------- Cards ---------- */
-
-.card {
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-}
-
-.account-card {
-  padding: 13px 14px 14px;
-}
-
-.field-label {
-  display: block;
-  color: var(--muted);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.9px;
-  font-weight: 600;
-  margin-bottom: 7px;
-}
-
-input {
-  width: 100%;
-  background: var(--card-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 11px 13px;
-  color: var(--text);
-  font-size: 14px;
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-}
-
-input:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(109, 155, 255, 0.14);
-}
-
 /* ---------- Play ---------- */
 
 .play-button {
@@ -182,19 +188,19 @@ input:focus {
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
   border: none;
   border-radius: 13px;
-  padding: 15px;
+  padding: 14px;
   color: #fff;
-  font-size: 16px;
+  font-size: 15.5px;
   font-weight: 700;
   letter-spacing: 0.4px;
   cursor: pointer;
-  box-shadow: 0 10px 26px rgba(109, 155, 255, 0.32);
+  box-shadow: 0 8px 24px rgba(109, 155, 255, 0.3);
   transition: transform 0.1s, box-shadow 0.15s, opacity 0.15s;
 }
 
 .play-button:hover:not(:disabled) {
   transform: translateY(-1px);
-  box-shadow: 0 12px 30px rgba(109, 155, 255, 0.42);
+  box-shadow: 0 11px 28px rgba(109, 155, 255, 0.4);
 }
 
 .play-button:active:not(:disabled) {
@@ -214,6 +220,7 @@ input:focus {
   overflow: hidden;
   opacity: 0;
   transition: opacity 0.2s;
+  margin-top: -4px;
 }
 
 .progress.visible {
@@ -255,17 +262,17 @@ input:focus {
   flex-direction: column;
   overflow: hidden;
   min-height: 0;
-  background: #0b0e15;
+  background: #0a0d14;
 }
 
 .console-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 9px 13px;
+  padding: 8px 13px;
   border-bottom: 1px solid var(--border);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.9px;
@@ -277,7 +284,7 @@ input:focus {
   border-radius: 7px;
   color: var(--muted);
   padding: 3px 9px;
-  font-size: 10.5px;
+  font-size: 10px;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
 }
@@ -289,7 +296,7 @@ input:focus {
 
 pre {
   margin: 0;
-  padding: 11px 13px;
+  padding: 10px 13px;
   flex: 1;
   overflow-y: auto;
   color: #94a0bd;
@@ -308,7 +315,7 @@ pre::-webkit-scrollbar-thumb {
   border-radius: 4px;
 }
 
-/* ---------- Toolbar ---------- */
+/* ---------- Toolbar (kept as-is) ---------- */
 
 .toolbar {
   display: grid;

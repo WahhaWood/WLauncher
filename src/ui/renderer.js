@@ -1,4 +1,5 @@
 const nickInput = document.getElementById('nickname');
+const avatar = document.getElementById('avatar');
 const playButton = document.getElementById('play');
 const logBox = document.getElementById('log');
 const hint = document.getElementById('hint');
@@ -123,9 +124,16 @@ window.wlauncher.onConfig(async (config) => {
 });
 
 nickInput.value = localStorage.getItem(STORAGE_KEY) || '';
+updateAvatar();
 nickInput.addEventListener('input', () => {
   localStorage.setItem(STORAGE_KEY, nickInput.value.trim());
+  updateAvatar();
 });
+
+function updateAvatar() {
+  const name = nickInput.value.trim();
+  avatar.textContent = name ? name[0] : '?';
+}
 
 nickInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter') playButton.click();

@@ -8,8 +8,38 @@ const { prepareAndLaunch, offlineUuidFor } = require('./minecraft/launcher');
 const { checkDiskSpace, humanBytes } = require('./minecraft/util');
 const { pingServer } = require('./minecraft/server-status');
 
-const PACKWIZ_BOOTSTRAP = path.join(__dirname, '..', 'vendor', 'packwiz', 'packwiz-installer-bootstrap.jar');
+const PACKWIZ_BOOTSTRAP_SOURCE = path.join(__dirname, '..', 'vendor', 'packwiz', 'packwiz-installer-bootstrap.jar');
 const DRY_RUN = process.env.WLAUNCHER_DRY_RUN === '1';
+
+/**
+ * Java cannot read files packed inside app.asar, so the bootstrap jar is
+ * copied into the user's home on first use (and refreshed when it changes).
+ */
+let cachedBootstrap = null;
+function bootstrapJar() {
+  if (cachedBootstrap) return cachedBootstrap;
+  const destDir = path.join(os.homedir(), '.wlauncher', 'bootstrap');
+  const dest = path.join(destDir, 'packwiz-installer-bootstrap.jar');
+  try {
+    const data = fs.readFileSync(PACKWIZ_BOOTSTRAP_SOURCE);
+    let upToDate = false;
+    try {
+      upToDate = fs.readFileSync(dest).equals(data);
+    } catch {
+      // not copied yet
+    }
+    if (!upToDate) {
+      fs.mkdirSync(destDir, { recursive: true });
+      fs.writeFileSync(dest, data);
+    }
+    cachedBootstrap = dest;
+    return dest;
+  } catch {
+    // fallback: source path (dev mode / asar unpacked)
+    cachedBootstrap = PACKWIZ_BOOTSTRAP_SOURCE;
+    return cachedBootstrap;
+  }
+}
 
 function defaultGameDir() {
   return path.join(os.homedir(), '.wlauncher', 'game');
@@ -105,7 +135,7 @@ async function play({ config, nickname, settings = {}, onLog, onProgress } = {})
   if (config.packUrl) {
     log('Синхронизация сборки…');
     try {
-      await runProcess(java, ['-jar', PACKWIZ_BOOTSTRAP, '-g', config.packUrl], {
+      await runProcess(java, ['-jar', bootstrapJar(), '-g', config.packUrl], {
         cwd: gameDir,
         onLog: log,
       });
@@ -139,7 +169,7 @@ async function syncPack({ config, settings = {}, onLog } = {}) {
   const gameDir = settings.gameDir || defaultGameDir();
   const java = await ensureJava({ onLog: log });
   log('Проверка сборки…');
-  await runProcess(java, ['-jar', PACKWIZ_BOOTSTRAP, '-g', config.packUrl], {
+  await runProcess(java, ['-jar', bootstrapJar(), '-g', config.packUrl], {
     cwd: gameDir,
     onLog: log,
   });

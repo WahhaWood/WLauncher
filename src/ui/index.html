@@ -10,13 +10,12 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <div class="glow glow-a"></div>
-    <div class="glow glow-b"></div>
+    <div class="header-glow"></div>
 
     <main>
       <header class="topbar">
         <div class="brand">
-          <svg class="mark" width="30" height="22" viewBox="0 0 34 24" aria-hidden="true">
+          <svg class="mark" width="26" height="19" viewBox="0 0 34 24" aria-hidden="true">
             <defs>
               <linearGradient id="markGrad" x1="0" y1="0" x2="1" y2="1">
                 <stop offset="0" stop-color="#6d9bff" />
@@ -32,31 +31,33 @@
               stroke-linejoin="round"
             />
           </svg>
-          <div class="brand-text">
-            <h1>WLAUNCHER</h1>
-            <div class="server-status">
-              <span class="dot" id="server-dot"></span>
-              <span id="subtitle">Сборка WLauncher</span>
-            </div>
-          </div>
+          <h1>WLauncher</h1>
+          <span class="version" id="version-tag"></span>
         </div>
-        <span class="version" id="version-tag"></span>
       </header>
 
       <section class="card account-card">
-        <label class="field-label" for="nickname">Игровой ник</label>
-        <input
-          id="nickname"
-          type="text"
-          maxlength="16"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="Steve"
-        />
+        <div class="avatar" id="avatar">?</div>
+        <div class="account-info">
+          <label class="field-label" for="nickname">Ник на сервере</label>
+          <input
+            id="nickname"
+            type="text"
+            maxlength="16"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="Steve"
+          />
+        </div>
       </section>
 
+      <div class="server-status">
+        <span class="dot" id="server-dot"></span>
+        <span id="subtitle">Сборка WLauncher</span>
+      </div>
+
       <button id="play" class="play-button" type="button">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor" aria-hidden="true">
           <path d="M8 5.5v13l11-6.5z" />
         </svg>
         <span>Играть</span>

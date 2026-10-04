@@ -3,29 +3,38 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-// Config can live next to the exe (portable override) or inside the app.
-// The portable override lets you change server/pack URL without rebuilding.
+// Config is baked into the app (config.json inside the package).
+// It can additionally be refreshed from a remote URL so server/pack changes
+// do not require rebuilding and no external file has to be copied around.
 function loadConfig() {
-  const candidates = [];
-  if (process.env.PORTABLE_EXECUTABLE_DIR) {
-    candidates.push(path.join(process.env.PORTABLE_EXECUTABLE_DIR, 'config.json'));
-  }
-  candidates.push(path.join(path.dirname(process.execPath), 'config.json'));
-  candidates.push(path.join(__dirname, '..', 'config.json'));
-
-  for (const file of candidates) {
-    try {
-      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
-      return { data, file };
-    } catch {
-      // try next
-    }
-  }
-  throw new Error('config.json не найден');
+  const file = path.join(__dirname, '..', 'config.json');
+  return JSON.parse(fs.readFileSync(file, 'utf8'));
 }
 
-const { data: config, file: configFile } = loadConfig();
+const config = loadConfig();
 const { play, syncPack, serverStatus, findFreshCrash, readState, defaultGameDir } = require('./engine');
+
+// Ask a remote config for updates (server address, pack URL) shortly after
+// start; anything it returns overrides the baked-in values.
+async function refreshRemoteConfig() {
+  if (!config.remoteConfigUrl) return;
+  try {
+    const res = await fetch(config.remoteConfigUrl, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) return;
+    const remote = await res.json();
+    let changed = false;
+    for (const key of ['server', 'packUrl', 'nicknamePattern']) {
+      if (typeof remote[key] === 'string' && remote[key] !== config[key]) {
+        config[key] = remote[key];
+        changed = true;
+      }
+    }
+    if (changed) appendLogFile(`Конфиг обновлён из ${config.remoteConfigUrl}`);
+    send('config', { server: config.server, packUrl: config.packUrl, version: app.getVersion() });
+  } catch (err) {
+    appendLogFile(`Удалённый конфиг недоступен: ${err.message}`);
+  }
+}
 
 let mainWindow = null;
 
@@ -79,6 +88,7 @@ function createWindow() {
 
 app.whenReady().then(async () => {
   createWindow();
+  refreshRemoteConfig();
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
