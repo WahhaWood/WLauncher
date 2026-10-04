@@ -3,7 +3,28 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 
-const config = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config.json'), 'utf8'));
+// Config can live next to the exe (portable override) or inside the app.
+// The portable override lets you change server/pack URL without rebuilding.
+function loadConfig() {
+  const candidates = [];
+  if (process.env.PORTABLE_EXECUTABLE_DIR) {
+    candidates.push(path.join(process.env.PORTABLE_EXECUTABLE_DIR, 'config.json'));
+  }
+  candidates.push(path.join(path.dirname(process.execPath), 'config.json'));
+  candidates.push(path.join(__dirname, '..', 'config.json'));
+
+  for (const file of candidates) {
+    try {
+      const data = JSON.parse(fs.readFileSync(file, 'utf8'));
+      return { data, file };
+    } catch {
+      // try next
+    }
+  }
+  throw new Error('config.json не найден');
+}
+
+const { data: config, file: configFile } = loadConfig();
 const { play } = require('./engine');
 
 let mainWindow = null;

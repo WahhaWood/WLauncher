@@ -8,7 +8,6 @@ const { prepareAndLaunch, offlineUuidFor } = require('./minecraft/launcher');
 
 const PACKWIZ_BOOTSTRAP = path.join(__dirname, '..', 'vendor', 'packwiz', 'packwiz-installer-bootstrap.jar');
 const DRY_RUN = process.env.WLAUNCHER_DRY_RUN === '1';
-
 function gameDir() {
   return path.join(os.homedir(), '.wlauncher', 'game');
 }
@@ -49,15 +48,15 @@ async function play({ config, nickname, settings = {}, onLog, onProgress } = {})
   // 4. Pack sync (packwiz) — runs before the game starts
   if (config.packUrl) {
     log('Синхронизация сборки…');
-    await runProcess(java, ['-jar', PACKWIZ_BOOTSTRAP, config.packUrl], {
-      cwd: path.join(gameDir, 'instances', config.instanceId || 'WLauncher'),
+    await runProcess(java, ['-jar', PACKWIZ_BOOTSTRAP, '-g', config.packUrl], {
+      cwd: gameDir,
       onLog: log,
     });
   }
 
-  // 5. Launch: wait a bit to make sure the JVM didn't die instantly
+  // 5. Launch detached: the game must survive the launcher closing.
   log('Запуск игры…');
-  const child = await runProcess(launch.java, launch.args, {
+  const child = await launchGame(launch.java, launch.args, {
     cwd: launch.gameDir,
     onLog: log,
     watchFor: 12000,
@@ -65,6 +64,99 @@ async function play({ config, nickname, settings = {}, onLog, onProgress } = {})
 
   // The game is running — tell the caller (main.js) so it can close the launcher.
   return { pid: child?.pid ?? null, launched: true };
+}
+
+/**
+ * Launches the game fully detached with output going to a log file.
+ * Piping into the launcher would kill the game the moment the launcher
+ * closes (the pipe breaks and Electron tears the child process down).
+ */
+function launchGame(executable, args, { cwd, onLog = () => {}, watchFor = 12000 } = {}) {
+  if (DRY_RUN) {
+    onLog(`[dry-run] ${executable} ${args.slice(0, 6).join(' ')}…`);
+    return Promise.resolve(null);
+  }
+
+  const logDir = path.join(os.homedir(), '.wlauncher', 'logs');
+  fs.mkdirSync(logDir, { recursive: true });
+  const gameLog = path.join(logDir, 'game-out.log');
+
+  const fd = fs.openSync(gameLog, 'a');
+  fs.writeSync(fd, `\n===== Запуск ${new Date().toISOString()} =====\n`);
+
+  const child = spawn(executable, args, {
+    cwd,
+    windowsHide: true,
+    detached: true,
+    stdio: ['ignore', fd, fd],
+  });
+  child.unref();
+
+  // Mirror new lines from the game's log into the launcher window.
+  let offset = 0;
+  try {
+    offset = fs.statSync(gameLog).size;
+  } catch {
+    // ignore
+  }
+  const forwardNew = () => {
+    try {
+      const size = fs.statSync(gameLog).size;
+      if (size <= offset) return;
+      const len = size - offset;
+      const buf = Buffer.alloc(len);
+      const fdr = fs.openSync(gameLog, 'r');
+      fs.readSync(fdr, buf, 0, len, offset);
+      fs.closeSync(fdr);
+      offset = size;
+      String(buf).split(/\r?\n/).filter(Boolean).forEach(onLog);
+    } catch {
+      // ignore
+    }
+  };
+  const tailTimer = setInterval(forwardNew, 700);
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+
+    child.on('error', (err) => {
+      if (tailTimer) clearInterval(tailTimer);
+      try {
+        fs.closeSync(fd);
+      } catch {
+        // ignore
+      }
+      reject(err);
+    });
+
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        if (tailTimer) clearInterval(tailTimer);
+        try {
+          fs.closeSync(fd);
+        } catch {
+          // ignore
+        }
+        resolve(child);
+      }
+    }, watchFor);
+
+    child.on('exit', (code) => {
+      forwardNew();
+      if (!settled) {
+        settled = true;
+        clearTimeout(timer);
+        if (tailTimer) clearInterval(tailTimer);
+        try {
+          fs.closeSync(fd);
+        } catch {
+          // ignore
+        }
+        reject(new Error(`Игра завершилась сразу после запуска (код ${code}). Полный лог: ${gameLog}`));
+      }
+    });
+  });
 }
 
 function runProcess(executable, args, { cwd, onLog = () => {}, watchFor = 0 } = {}) {

@@ -1,6 +1,6 @@
 {
   "instanceId": "WLauncher",
   "server": "",
-  "packUrl": "",
+  "packUrl": "http://10.0.2.2:8090/pack.toml",
   "nicknamePattern": "^[A-Za-z0-9_]{3,16}$"
 }
