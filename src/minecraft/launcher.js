@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { downloadPool, fetchJsonCached, extractZip, humanBytes } = require('./util');
+const { ensureServerEntry } = require('./servers-dat');
 
 const PLACEHOLDERS = {
   auth_player_name: '${auth_player_name}',
@@ -80,6 +81,17 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
   fs.mkdirSync(objectsDir, { recursive: true });
   fs.mkdirSync(librariesDir, { recursive: true });
   fs.mkdirSync(indexesDir, { recursive: true });
+
+  // The server goes into the multiplayer list (servers.dat) instead of an
+  // auto-join flag: the player picks it themselves, and the entry survives
+  // pack updates. Our own entries are matched by ip, others are untouched.
+  if (server) {
+    try {
+      ensureServerEntry(gameDir, server, `WLauncher | ${server}`);
+    } catch (err) {
+      onLog?.(`Не удалось записать servers.dat: ${err.message}`);
+    }
+  }
 
   const tasks = [];
   const classpathEntries = [];
@@ -248,10 +260,10 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
     else if (Array.isArray(arg.value)) gameArgs.push(...arg.value.map((v) => substitute(v, values)));
   }
 
-  // Auto-join the server. Vanilla lists each quickPlay option as two separate
-  // entries (the flag and its value), so both must go before ours is appended —
-  // filtering only the flags would leave the substituted address behind as a
-  // stray positional argument.
+  // Auto-join is intentionally NOT used: the server lives in servers.dat
+  // (written above) so the player chooses when to join. Vanilla still lists
+  // each quickPlay option as two entries, so drop any it declares to avoid a
+  // stray substituted address lingering as a positional argument.
   const filteredGameArgs = [];
   for (let i = 0; i < gameArgs.length; i++) {
     const arg = gameArgs[i];
@@ -260,9 +272,6 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
       continue;
     }
     filteredGameArgs.push(arg);
-  }
-  if (server) {
-    filteredGameArgs.push('--quickPlayMultiplayer', server);
   }
 
   // Remove --demo flag and empty arguments

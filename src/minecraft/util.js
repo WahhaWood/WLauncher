@@ -47,6 +47,21 @@ function isPortable() {
 }
 
 /**
+ * Rotates a log file once it exceeds maxBytes: game-out.log.1 keeps the
+ * previous session, older history is dropped. Unbounded logs otherwise
+ * grow forever (a modded client is very chatty).
+ */
+function rotateFile(filePath, maxBytes) {
+  try {
+    if (fs.statSync(filePath).size <= maxBytes) return;
+    fs.rmSync(`${filePath}.1`, { force: true });
+    fs.renameSync(filePath, `${filePath}.1`);
+  } catch {
+    // missing file or rotation failure — not fatal
+  }
+}
+
+/**
  * Single download with progress. Writes to a .part file first so an
  * interrupted download never looks like a complete file.
  */
@@ -273,4 +288,5 @@ module.exports = {
   extractZip,
   dataDir,
   isPortable,
+  rotateFile,
 };

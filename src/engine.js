@@ -6,7 +6,7 @@ const { spawn } = require('child_process');
 const { ensureJava } = require('./minecraft/java');
 const { ensureGame, MINECRAFT_VERSION } = require('./minecraft/installer');
 const { prepareAndLaunch, offlineUuidFor } = require('./minecraft/launcher');
-const { checkDiskSpace, humanBytes, download, extractZip, dataDir } = require('./minecraft/util');
+const { checkDiskSpace, humanBytes, download, extractZip, dataDir, rotateFile } = require('./minecraft/util');
 const { pingServer } = require('./minecraft/server-status');
 
 const PACKWIZ_BOOTSTRAP_SOURCE = path.join(__dirname, '..', 'vendor', 'packwiz', 'packwiz-installer-bootstrap.jar');
@@ -211,7 +211,9 @@ function sha256File(filePath) {
 /**
  * Pack sync from manifest.json (see wahha-pack/build-pack.py).
  * Downloads only archives whose sha256 changed, verifies the hash, extracts
- * over gameDir and removes stale jars from mods/. Pure Node — no Java needed.
+ * over gameDir and removes stale jars from mods/. Archives are deleted after
+ * a successful apply (they duplicate the extracted content); an unchanged
+ * pack is verified in place instead of re-downloaded. Pure Node.
  */
 async function syncPackFromManifest({ manifestUrl, gameDir, onLog, onProgress } = {}) {
   const log = (line) => onLog?.(line);
@@ -230,6 +232,46 @@ async function syncPackFromManifest({ manifestUrl, gameDir, onLog, onProgress } 
   fs.mkdirSync(cacheDir, { recursive: true });
   const state = readPackState(gameDir);
 
+  // Verifies the pack is fully on disk without the archives (they are
+  // deleted after apply). Mods and overlay are checked independently so a
+  // damaged mod re-downloads only its shards. Results are cached per sync —
+  // files only appear during it, so a positive answer stays valid.
+  const isModsArchive = (name) => name.startsWith('mods-');
+  let modsOk = null;
+  let overlayOk = null;
+  function verifyAppliedFiles(archiveName) {
+    if (isModsArchive(archiveName)) {
+      if (modsOk === null) modsOk = checkModsFiles();
+      return modsOk;
+    }
+    if (overlayOk === null) overlayOk = checkOverlayFiles();
+    return overlayOk;
+  }
+  function checkModsFiles() {
+    try {
+      if (!Array.isArray(manifest.mods)) return true;
+      const modsDir = path.join(gameDir, 'mods');
+      for (const name of manifest.mods) {
+        if (!fs.existsSync(path.join(modsDir, name))) return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  function checkOverlayFiles() {
+    try {
+      if (!Array.isArray(manifest.overlay)) return true;
+      for (const rel of manifest.overlay) {
+        const full = safeGamePath(gameDir, rel);
+        if (!full || !fs.existsSync(full)) return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   let n = 0;
   for (const file of manifest.files) {
     n++;
@@ -240,6 +282,13 @@ async function syncPackFromManifest({ manifestUrl, gameDir, onLog, onProgress } 
       fresh = fs.existsSync(cached) && sha256File(cached) === file.sha256;
     } catch {
       fresh = false;
+    }
+    const appliedKey = `applied:${file.name}`;
+    const applied = state[appliedKey] === file.sha256;
+    if (!fresh && applied && verifyAppliedFiles(file.name)) {
+      log(`${file.name}: уже установлен, пропуск.`);
+      onProgress?.(n / manifest.files.length);
+      continue;
     }
     if (!fresh) {
       log(`Скачивание ${file.name}${file.size ? ` (${humanBytes(file.size)})` : ''}…`);
@@ -256,14 +305,25 @@ async function syncPackFromManifest({ manifestUrl, gameDir, onLog, onProgress } 
     }
     onProgress?.(n / manifest.files.length);
 
-    const appliedKey = `applied:${file.name}`;
-    if (!fresh || state[appliedKey] !== file.sha256) {
+    if (!fresh || !applied) {
       log(`Распаковка ${file.name}…`);
       await extractZip(cached, gameDir);
       state[appliedKey] = file.sha256;
+      // Overlay archives carry config/kubejs: refresh the installed list so
+      // files removed from the pack can be cleaned up below.
+      if (Array.isArray(manifest.overlay) && !file.name.startsWith('mods-')) {
+        state.overlayFiles = manifest.overlay;
+      }
       writePackState(gameDir, state);
     }
+    // Archives are deleted after a successful apply: they duplicate the
+    // extracted content (~830M). A missing archive is simply re-downloaded
+    // when its sha changes; unchanged packs are verified in place (above).
+    fs.rmSync(cached, { force: true });
   }
+
+  // Leftover of the old packwiz flow — never part of the pack.
+  fs.rmSync(path.join(gameDir, 'packwiz-installer.jar'), { force: true });
 
   // Stale jars from a previous pack version must go, otherwise NeoForge
   // loads both the old and the new copy of a mod. Launcher caches
@@ -356,6 +416,7 @@ function launchGame(executable, args, { cwd, onLog = () => {}, watchFor = 12000 
   const logDir = path.join(dataDir(), 'logs');
   fs.mkdirSync(logDir, { recursive: true });
   const gameLog = path.join(logDir, 'game-out.log');
+  rotateFile(gameLog, 8 * 1024 * 1024);
 
   const fd = fs.openSync(gameLog, 'a');
   fs.writeSync(fd, `\n===== Запуск ${new Date().toISOString()} =====\n`);

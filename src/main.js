@@ -80,6 +80,8 @@ function logPath() {
 
 function appendLogFile(line) {
   try {
+    const { rotateFile } = require('./minecraft/util');
+    rotateFile(logPath(), 2 * 1024 * 1024);
     fs.appendFileSync(logPath(), `[${new Date().toISOString()}] ${line}\n`, 'utf8');
   } catch {
     // logging must never break the launcher
