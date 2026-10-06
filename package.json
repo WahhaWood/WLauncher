@@ -10,7 +10,8 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win --publish never",
-    "dist:portable": "electron-builder --win portable --publish never"
+    "dist:portable": "electron-builder --win portable --publish never",
+    "dist:linux": "electron-builder --linux appimage pacman --publish never"
   },
   "devDependencies": {
     "electron": "^33.0.0",
@@ -37,6 +38,22 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "icon": "build/icon-1024.png",
+      "category": "Game",
+      "maintainer": "Wahha",
+      "description": "WLauncher — лаунчер модовой сборки",
+      "target": [
+        "AppImage",
+        "pacman"
+      ],
+      "desktop": {
+        "entry": {
+          "Name": "WLauncher",
+          "Comment": "WLauncher — лаунчер модовой сборки"
+        }
+      }
     }
   },
   "allowScripts": {
