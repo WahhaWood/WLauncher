@@ -44,11 +44,28 @@ async function refreshRemoteConfig() {
         }
       }
     }
+    // RAM floors are numbers, not strings — accept any JSON number.
+    for (const key of ['defaultMinRam', 'defaultMaxRam']) {
+      if (typeof remote[key] === 'number' && remote[key] > 0 && remote[key] !== config[key]) {
+        config[key] = remote[key];
+        changed = true;
+      }
+    }
     if (changed) appendLogFile(`Конфиг обновлён из ${config.remoteConfigUrl}`);
-    send('config', { server: config.server, packUrl: config.packUrl, version: app.getVersion() });
+    send('config', configPayload());
   } catch (err) {
     appendLogFile(`Удалённый конфиг недоступен: ${err.message}`);
   }
+}
+
+function configPayload() {
+  return {
+    server: config.server,
+    packUrl: config.packUrl,
+    defaultMinRam: config.defaultMinRam,
+    defaultMaxRam: config.defaultMaxRam,
+    version: app.getVersion(),
+  };
 }
 
 let mainWindow = null;
@@ -94,11 +111,7 @@ function createWindow() {
 
   mainWindow.setMenuBarVisibility(false);
   mainWindow.loadFile(path.join(__dirname, 'ui', 'index.html'));
-  mainWindow.webContents.send('config', {
-    server: config.server,
-    packUrl: config.packUrl,
-    version: app.getVersion(),
-  });
+  mainWindow.webContents.send('config', configPayload());
 }
 
 app.whenReady().then(async () => {

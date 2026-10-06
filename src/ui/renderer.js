@@ -25,10 +25,12 @@ let running = false;
 
 const DEFAULT_SETTINGS = {
   gameDir: '',
-  // -Xms is kept at roughly a quarter of -Xmx: -XX:+AlwaysPreTouch only
-  // pre-commits up to -Xms, so a small -Xms against a large -Xmx leaves most of
-  // the heap to be faulted in during play, which is exactly when stutter hurts.
-  minRam: 2048,
+  // ATM10 with ~370 mods will not fit into a small heap: -XX:+AlwaysPreTouch
+  // only pre-commits up to -Xms, so a small -Xms against a large -Xmx leaves
+  // most of the heap to be faulted in during play, which is exactly when
+  // stutter hurts. 6G is the floor for this pack; the engine additionally
+  // clamps both values to what the machine can actually give.
+  minRam: 6144,
   maxRam: 8192,
   width: 1920,
   height: 1080,
@@ -123,6 +125,16 @@ window.wlauncher.onLog(appendLog);
 window.wlauncher.onProgress(setProgress);
 window.wlauncher.onConfig(async (config) => {
   if (config.version) versionTag.textContent = `v${config.version}`;
+  // RAM floors come from the remote config when the player never touched
+  // settings — a saved customization always wins over the remote default.
+  try {
+    if (!localStorage.getItem(SETTINGS_KEY)) {
+      if (Number(config.defaultMinRam) > 0) DEFAULT_SETTINGS.minRam = Number(config.defaultMinRam);
+      if (Number(config.defaultMaxRam) > 0) DEFAULT_SETTINGS.maxRam = Number(config.defaultMaxRam);
+    }
+  } catch {
+    // localStorage unavailable — keep baked defaults
+  }
   await updateServerStatus();
 });
 
