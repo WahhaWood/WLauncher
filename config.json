@@ -1,7 +1,8 @@
 {
   "instanceId": "WLauncher",
-  "server": "",
+  "server": "195.222.161.130:25565",
   "packUrl": "https://wahhawood.github.io/wahha-pack/pack.toml",
+  "manifestUrl": "https://wahhawood.github.io/wahha-pack/manifest.json",
   "remoteConfigUrl": "https://wahhawood.github.io/wahha-pack/launcher.json",
   "nicknamePattern": "^[A-Za-z0-9_]{3,16}$"
 }

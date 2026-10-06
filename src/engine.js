@@ -1,11 +1,12 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { createHash } = require('crypto');
 const { spawn } = require('child_process');
 const { ensureJava } = require('./minecraft/java');
 const { ensureGame, MINECRAFT_VERSION } = require('./minecraft/installer');
 const { prepareAndLaunch, offlineUuidFor } = require('./minecraft/launcher');
-const { checkDiskSpace, humanBytes } = require('./minecraft/util');
+const { checkDiskSpace, humanBytes, download, extractZip } = require('./minecraft/util');
 const { pingServer } = require('./minecraft/server-status');
 
 const PACKWIZ_BOOTSTRAP_SOURCE = path.join(__dirname, '..', 'vendor', 'packwiz', 'packwiz-installer-bootstrap.jar');
@@ -130,9 +131,20 @@ async function play({ config, nickname, settings = {}, onLog, onProgress } = {})
     onProgress,
   });
 
-  // 4. Pack sync (packwiz). A failure here must NOT block the launch —
+  // 4. Pack sync. A failure here must NOT block the launch —
   // the player still has the files from the previous sync.
-  if (config.packUrl) {
+  // manifestUrl (zip + manifest.json, see wahha-pack/build-pack.py) is the
+  // primary format; packUrl (packwiz bootstrap) remains as a fallback.
+  if (config.manifestUrl) {
+    log('Синхронизация сборки…');
+    try {
+      await syncPackFromManifest({ manifestUrl: config.manifestUrl, gameDir, onLog: log, onProgress });
+      log('Сборка синхронизирована.');
+    } catch (err) {
+      log(`ПРЕДУПРЕЖДЕНИЕ: не удалось обновить сборку (${firstLine(err.message)}).`);
+      log('Запускаю с текущими файлами.');
+    }
+  } else if (config.packUrl) {
     log('Синхронизация сборки…');
     try {
       await runProcess(java, ['-jar', bootstrapJar(), '-g', config.packUrl], {
@@ -160,13 +172,157 @@ async function play({ config, nickname, settings = {}, onLog, onProgress } = {})
   return { pid: child?.pid ?? null, launched: true };
 }
 
+function packStatePath(gameDir) {
+  return path.join(gameDir, '.wlauncher-pack.json');
+}
+
+function readPackState(gameDir) {
+  try {
+    return JSON.parse(fs.readFileSync(packStatePath(gameDir), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+function writePackState(gameDir, state) {
+  try {
+    fs.mkdirSync(path.dirname(packStatePath(gameDir)), { recursive: true });
+    fs.writeFileSync(packStatePath(gameDir), JSON.stringify(state, null, 1));
+  } catch {
+    // best effort
+  }
+}
+
+function sha256File(filePath) {
+  const hash = createHash('sha256');
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    const buf = Buffer.alloc(4 * 1024 * 1024);
+    let bytes;
+    while ((bytes = fs.readSync(fd, buf, 0, buf.length, null)) > 0) {
+      hash.update(buf.subarray(0, bytes));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  return hash.digest('hex');
+}
+
+/**
+ * Pack sync from manifest.json (see wahha-pack/build-pack.py).
+ * Downloads only archives whose sha256 changed, verifies the hash, extracts
+ * over gameDir and removes stale jars from mods/. Pure Node — no Java needed.
+ */
+async function syncPackFromManifest({ manifestUrl, gameDir, onLog, onProgress } = {}) {
+  const log = (line) => onLog?.(line);
+  if (!manifestUrl) throw new Error('Не задан manifestUrl сборки.');
+
+  const res = await fetch(manifestUrl, { redirect: 'follow' });
+  if (!res.ok) throw new Error(`HTTP ${res.status} для ${manifestUrl}`);
+  const manifest = await res.json();
+  if (!manifest || !Array.isArray(manifest.files) || manifest.files.length === 0) {
+    throw new Error('Некорректный manifest.json сборки.');
+  }
+  const base = manifest.baseUrl || manifestUrl.slice(0, manifestUrl.lastIndexOf('/') + 1);
+
+  fs.mkdirSync(gameDir, { recursive: true });
+  const cacheDir = path.join(os.homedir(), '.wlauncher', 'cache', 'pack');
+  fs.mkdirSync(cacheDir, { recursive: true });
+  const state = readPackState(gameDir);
+
+  let n = 0;
+  for (const file of manifest.files) {
+    n++;
+    if (!file.name || !file.sha256) throw new Error('Некорректный manifest.json сборки.');
+    const cached = path.join(cacheDir, path.basename(file.name));
+    let fresh = false;
+    try {
+      fresh = fs.existsSync(cached) && sha256File(cached) === file.sha256;
+    } catch {
+      fresh = false;
+    }
+    if (!fresh) {
+      log(`Скачивание ${file.name}${file.size ? ` (${humanBytes(file.size)})` : ''}…`);
+      await download(base + file.name, cached, (received, total) => {
+        if (total) onProgress?.(((n - 1) + received / total) / manifest.files.length);
+      });
+      const actual = sha256File(cached);
+      if (actual !== file.sha256) {
+        fs.rmSync(cached, { force: true });
+        throw new Error(`Хеш ${file.name} не совпал — файл удалён, попробуйте ещё раз.`);
+      }
+    } else {
+      log(`${file.name}: уже скачан, хеш совпал.`);
+    }
+    onProgress?.(n / manifest.files.length);
+
+    const appliedKey = `applied:${file.name}`;
+    if (!fresh || state[appliedKey] !== file.sha256) {
+      log(`Распаковка ${file.name}…`);
+      await extractZip(cached, gameDir);
+      state[appliedKey] = file.sha256;
+      writePackState(gameDir, state);
+    }
+  }
+
+  // Stale jars from a previous pack version must go, otherwise NeoForge
+  // loads both the old and the new copy of a mod. Launcher caches
+  // (Modrinth/Prism leftovers) are never part of the pack either.
+  if (Array.isArray(manifest.mods)) {
+    const keep = new Set(manifest.mods);
+    const modsDir = path.join(gameDir, 'mods');
+    if (fs.existsSync(modsDir)) {
+      let removed = 0;
+      for (const name of fs.readdirSync(modsDir)) {
+        const full = path.join(modsDir, name);
+        if (name === '.index' || name === '_disabled_orphans') {
+          fs.rmSync(full, { recursive: true, force: true });
+          removed++;
+        } else if (name.endsWith('.jar') && !keep.has(name)) {
+          fs.rmSync(full, { force: true });
+          removed++;
+        }
+      }
+      if (removed > 0) log(`Удалено устаревших файлов в mods/: ${removed}.`);
+    }
+  }
+
+  // Overlay files removed from the pack must go too (a deleted KubeJS
+  // script would otherwise keep running). Only files this sync previously
+  // installed are eligible — player-generated files are never touched.
+  if (Array.isArray(manifest.overlay)) {
+    const prev = Array.isArray(state.overlayFiles) ? state.overlayFiles : [];
+    const keep = new Set(manifest.overlay);
+    let removed = 0;
+    for (const rel of prev) {
+      if (keep.has(rel)) continue;
+      const full = safeGamePath(gameDir, rel);
+      if (full && fs.existsSync(full)) {
+        fs.rmSync(full, { force: true });
+        removed++;
+      }
+    }
+    if (removed > 0) log(`Удалено устаревших файлов сборки: ${removed}.`);
+    state.overlayFiles = manifest.overlay;
+  }
+
+  state.version = manifest.packVersion || state.version;
+  writePackState(gameDir, state);
+  return { ok: true, version: manifest.packVersion };
+}
+
 /**
  * Manual pack sync (for the "Проверить сборку" button).
  */
 async function syncPack({ config, settings = {}, onLog } = {}) {
   const log = (line) => onLog?.(line);
-  if (!config.packUrl) throw new Error('В config.json не задан packUrl.');
   const gameDir = settings.gameDir || defaultGameDir();
+  if (config.manifestUrl) {
+    await syncPackFromManifest({ manifestUrl: config.manifestUrl, gameDir, onLog: log });
+    log('Сборка проверена и обновлена.');
+    return { ok: true };
+  }
+  if (!config.packUrl) throw new Error('В config.json не задан packUrl.');
   const java = await ensureJava({ onLog: log });
   log('Проверка сборки…');
   await runProcess(java, ['-jar', bootstrapJar(), '-g', config.packUrl], {
@@ -303,9 +459,22 @@ function firstLine(text) {
   return String(text).split('\n')[0].trim();
 }
 
+/**
+ * Resolves a manifest-relative path inside gameDir, rejecting absolute
+ * paths and anything escaping it.
+ */
+function safeGamePath(gameDir, rel) {
+  const cleaned = String(rel).replace(/\\/g, '/').replace(/^\/+/, '');
+  const target = path.resolve(gameDir, cleaned);
+  const base = path.resolve(gameDir);
+  if (target !== base && !target.startsWith(base + path.sep)) return null;
+  return target;
+}
+
 module.exports = {
   play,
   syncPack,
+  syncPackFromManifest,
   serverStatus,
   findFreshCrash,
   writeState,

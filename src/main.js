@@ -18,15 +18,22 @@ const { play, syncPack, serverStatus, findFreshCrash, readState, defaultGameDir 
 // start; anything it returns overrides the baked-in values.
 async function refreshRemoteConfig() {
   if (!config.remoteConfigUrl) return;
+  const bakedIn = { server: config.server, packUrl: config.packUrl };
   try {
     const res = await fetch(config.remoteConfigUrl, { signal: AbortSignal.timeout(5000) });
     if (!res.ok) return;
     const remote = await res.json();
     let changed = false;
-    for (const key of ['server', 'packUrl', 'nicknamePattern']) {
+    for (const key of ['server', 'packUrl', 'manifestUrl', 'nicknamePattern']) {
       if (typeof remote[key] === 'string' && remote[key] !== config[key]) {
         config[key] = remote[key];
         changed = true;
+        // A remote config wins over the baked-in one, so an empty value silently
+        // switches a working server address off. Say so instead of failing later
+        // with the client simply never joining.
+        if (key === 'server' && remote[key] === '' && bakedIn.server) {
+          appendLogFile(`ВНИМАНИЕ: удалённый конфиг обнулил адрес сервера (в сборке был ${bakedIn.server}).`);
+        }
       }
     }
     if (changed) appendLogFile(`Конфиг обновлён из ${config.remoteConfigUrl}`);

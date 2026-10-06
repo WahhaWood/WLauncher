@@ -1,16 +1,21 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
+const { createHash } = require('crypto');
 const { download, execFileAsync, fetchJsonCached, humanBytes } = require('./util');
 
-const MINECRAFT_VERSION = '26.1.2';
-const NEOFORGE_VERSION = '26.1.2.114';
+const MINECRAFT_VERSION = '1.21.1';
+const NEOFORGE_VERSION = '21.1.251';
 const NEOFORGE_INSTALLER_URL = `https://maven.neoforged.net/releases/net/neoforged/neoforge/${NEOFORGE_VERSION}/neoforge-${NEOFORGE_VERSION}-installer.jar`;
 const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
 const MANIFEST_TTL = 3 * 60 * 60 * 1000; // 3 часа
 
 function cacheDir() {
   return path.join(os.homedir(), '.wlauncher', 'cache');
+}
+
+function sha1(buffer) {
+  return createHash('sha1').update(buffer).digest('hex');
 }
 
 /**
@@ -20,8 +25,17 @@ function cacheDir() {
  */
 async function ensureGame({ java, gameDir, onLog, onProgress } = {}) {
   if (process.env.WLAUNCHER_DRY_RUN === '1') {
-    onLog?.('[dry-run] Minecraft 26.1.2 + NeoForge 26.1.2.114 (пропуск)');
-    return { gameDir: gameDir || '/tmp/opencode/game', versionJson: { id: 'neoforge-26.1.2.114', mainClass: 'net.neoforged.fml.startup.Client', arguments: { jvm: [], game: [] }, libraries: [], assetIndex: { id: '30', url: 'https://example.com/30.json' } } };
+    onLog?.(`[dry-run] Minecraft ${MINECRAFT_VERSION} + NeoForge ${NEOFORGE_VERSION} (пропуск)`);
+    return {
+      gameDir: gameDir || '/tmp/opencode/game',
+      versionJson: {
+        id: `neoforge-${NEOFORGE_VERSION}`,
+        mainClass: 'cpw.mods.bootstraplauncher.BootstrapLauncher',
+        arguments: { jvm: [], game: [] },
+        libraries: [],
+        assetIndex: { id: '17', url: 'https://example.com/17.json' },
+      },
+    };
   }
 
   const versionsDir = path.join(gameDir, 'versions');
@@ -51,6 +65,15 @@ async function ensureGame({ java, gameDir, onLog, onProgress } = {}) {
         onLog?.(`Minecraft: ${humanBytes(received)}${total ? ` / ${humanBytes(total)}` : ''}`);
       }
     });
+
+    // The NeoForge installer patches this jar; a truncated or corrupted download
+    // would only surface as an opaque installer failure much later.
+    const expected = versionJson.downloads.client.sha1;
+    const actual = sha1(fs.readFileSync(clientJar));
+    if (expected && actual !== expected) {
+      fs.rmSync(clientJar, { force: true });
+      throw new Error('Хеш Minecraft не совпал — файл повреждён при скачивании. Он удалён, попробуйте ещё раз.');
+    }
   }
 
   // 2. NeoForge installer
@@ -80,7 +103,11 @@ async function ensureGame({ java, gameDir, onLog, onProgress } = {}) {
     const parentJson = path.join(versionsDir, nfVersionJson.inheritsFrom, `${nfVersionJson.inheritsFrom}.json`);
     if (fs.existsSync(parentJson)) {
       const parent = JSON.parse(fs.readFileSync(parentJson, 'utf8'));
-      nfVersionJson.libraries = [...(parent.libraries || []), ...(nfVersionJson.libraries || [])];
+      const parentLibs = parent.libraries || [];
+      const merged = dedupeLibraries([...parentLibs, ...(nfVersionJson.libraries || [])]);
+      const duplicates = parentLibs.length + (nfVersionJson.libraries || []).length - merged.length;
+      if (duplicates > 0) onLog?.(`Объединено библиотек: дубликатов отброшено ${duplicates}.`);
+      nfVersionJson.libraries = merged;
       nfVersionJson.arguments = {
         jvm: [...(parent.arguments?.jvm || []), ...(nfVersionJson.arguments?.jvm || [])],
         game: [...(parent.arguments?.game || []), ...(nfVersionJson.arguments?.game || [])],
@@ -88,10 +115,29 @@ async function ensureGame({ java, gameDir, onLog, onProgress } = {}) {
       if (!nfVersionJson.assetIndex && parent.assetIndex) nfVersionJson.assetIndex = parent.assetIndex;
       if (!nfVersionJson.assets && parent.assets) nfVersionJson.assets = parent.assets;
     }
+  } else {
+    nfVersionJson.libraries = dedupeLibraries(nfVersionJson.libraries || []);
   }
 
   onLog?.('Minecraft + NeoForge готовы.');
   return { gameDir, versionJson: nfVersionJson };
+}
+
+/**
+ * NeoForge repeats several libraries that vanilla already declares. Listing the
+ * same jar twice makes securejarhandler abort with "Duplicate key", so keep only
+ * the first entry — the vanilla one, which is what the official launcher does.
+ */
+function dedupeLibraries(libs) {
+  const seen = new Set();
+  const result = [];
+  for (const lib of libs) {
+    const key = lib.downloads?.artifact?.path || lib.name;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(lib);
+  }
+  return result;
 }
 
 module.exports = { ensureGame, MINECRAFT_VERSION, NEOFORGE_VERSION };
