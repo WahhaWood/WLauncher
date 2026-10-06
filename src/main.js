@@ -12,6 +12,14 @@ function loadConfig() {
 }
 
 const config = loadConfig();
+const { dataDir, isPortable } = require('./minecraft/util');
+
+// Portable exe: настройки, localStorage и лог лаунчера живут рядом с exe,
+// а не в %APPDATA%. Игровые данные (game/java/cache) переключаются через
+// dataDir() внутри движка.
+if (isPortable()) {
+  app.setPath('userData', path.join(dataDir(), 'launcher'));
+}
 const { play, syncPack, serverStatus, findFreshCrash, readState, defaultGameDir } = require('./engine');
 
 // Ask a remote config for updates (server address, pack URL) shortly after

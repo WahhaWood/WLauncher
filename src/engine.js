@@ -6,7 +6,7 @@ const { spawn } = require('child_process');
 const { ensureJava } = require('./minecraft/java');
 const { ensureGame, MINECRAFT_VERSION } = require('./minecraft/installer');
 const { prepareAndLaunch, offlineUuidFor } = require('./minecraft/launcher');
-const { checkDiskSpace, humanBytes, download, extractZip } = require('./minecraft/util');
+const { checkDiskSpace, humanBytes, download, extractZip, dataDir } = require('./minecraft/util');
 const { pingServer } = require('./minecraft/server-status');
 
 const PACKWIZ_BOOTSTRAP_SOURCE = path.join(__dirname, '..', 'vendor', 'packwiz', 'packwiz-installer-bootstrap.jar');
@@ -19,7 +19,7 @@ const DRY_RUN = process.env.WLAUNCHER_DRY_RUN === '1';
 let cachedBootstrap = null;
 function bootstrapJar() {
   if (cachedBootstrap) return cachedBootstrap;
-  const destDir = path.join(os.homedir(), '.wlauncher', 'bootstrap');
+  const destDir = path.join(dataDir(), 'bootstrap');
   const dest = path.join(destDir, 'packwiz-installer-bootstrap.jar');
   try {
     const data = fs.readFileSync(PACKWIZ_BOOTSTRAP_SOURCE);
@@ -43,11 +43,11 @@ function bootstrapJar() {
 }
 
 function defaultGameDir() {
-  return path.join(os.homedir(), '.wlauncher', 'game');
+  return path.join(dataDir(), 'game');
 }
 
 function statePath() {
-  return path.join(os.homedir(), '.wlauncher', 'state.json');
+  return path.join(dataDir(), 'state.json');
 }
 
 function readState() {
@@ -226,7 +226,7 @@ async function syncPackFromManifest({ manifestUrl, gameDir, onLog, onProgress } 
   const base = manifest.baseUrl || manifestUrl.slice(0, manifestUrl.lastIndexOf('/') + 1);
 
   fs.mkdirSync(gameDir, { recursive: true });
-  const cacheDir = path.join(os.homedir(), '.wlauncher', 'cache', 'pack');
+  const cacheDir = path.join(dataDir(), 'cache', 'pack');
   fs.mkdirSync(cacheDir, { recursive: true });
   const state = readPackState(gameDir);
 
@@ -353,7 +353,7 @@ function launchGame(executable, args, { cwd, onLog = () => {}, watchFor = 12000 
     return Promise.resolve(null);
   }
 
-  const logDir = path.join(os.homedir(), '.wlauncher', 'logs');
+  const logDir = path.join(dataDir(), 'logs');
   fs.mkdirSync(logDir, { recursive: true });
   const gameLog = path.join(logDir, 'game-out.log');
 

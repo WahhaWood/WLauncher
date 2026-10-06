@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { createHash } = require('crypto');
-const { download, execFileAsync, fetchJsonCached, humanBytes } = require('./util');
+const { download, execFileAsync, fetchJsonCached, humanBytes, dataDir } = require('./util');
 
 const MINECRAFT_VERSION = '1.21.1';
 const NEOFORGE_VERSION = '21.1.251';
@@ -11,7 +11,7 @@ const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest_v
 const MANIFEST_TTL = 3 * 60 * 60 * 1000; // 3 часа
 
 function cacheDir() {
-  return path.join(os.homedir(), '.wlauncher', 'cache');
+  return path.join(dataDir(), 'cache');
 }
 
 function sha1(buffer) {
