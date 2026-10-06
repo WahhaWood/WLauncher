@@ -5,7 +5,7 @@ const { createHash } = require('crypto');
 const { download, execFileAsync, fetchJsonCached, humanBytes, dataDir } = require('./util');
 
 const MINECRAFT_VERSION = '1.21.1';
-const NEOFORGE_VERSION = '21.1.251';
+const NEOFORGE_VERSION = '21.1.255';
 const NEOFORGE_INSTALLER_URL = `https://maven.neoforged.net/releases/net/neoforged/neoforge/${NEOFORGE_VERSION}/neoforge-${NEOFORGE_VERSION}-installer.jar`;
 const MANIFEST_URL = 'https://launchermeta.mojang.com/mc/game/version_manifest_v2.json';
 const MANIFEST_TTL = 3 * 60 * 60 * 1000; // 3 часа
