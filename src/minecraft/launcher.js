@@ -2,7 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { downloadPool, fetchJsonCached, extractZip, humanBytes } = require('./util');
-const { MINECRAFT_VERSION } = require('./installer');
 
 const PLACEHOLDERS = {
   auth_player_name: '${auth_player_name}',
@@ -62,7 +61,13 @@ const AIKAR_FLAGS = [
 async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, settings = {}, onLog, onProgress } = {}) {
   if (process.env.WLAUNCHER_DRY_RUN === '1') {
     onLog?.('[dry-run] Подготовка ассетов и библиотек (пропуск)');
-    return { java, args: ['-cp', '<classpath>', 'net.neoforged.fml.startup.Client', '--username', nickname, '--quickPlayMultiplayer', server || ''], mainClass: 'net.neoforged.fml.startup.Client', gameDir };
+    const mainClass = 'cpw.mods.bootstraplauncher.BootstrapLauncher';
+    return {
+      java,
+      args: ['-cp', '<classpath>', mainClass, '--username', nickname, '--quickPlayMultiplayer', server || ''],
+      mainClass,
+      gameDir,
+    };
   }
 
   const nativesDir = path.join(gameDir, 'natives');
@@ -70,7 +75,6 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
   const objectsDir = path.join(assetsDir, 'objects');
   const librariesDir = path.join(gameDir, 'libraries');
   const indexesDir = path.join(assetsDir, 'indexes');
-  const versionsDir = path.join(gameDir, 'versions');
 
   fs.mkdirSync(nativesDir, { recursive: true });
   fs.mkdirSync(objectsDir, { recursive: true });
@@ -80,15 +84,16 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
   const tasks = [];
   const classpathEntries = [];
 
-  // The client jar itself must be on the classpath
-  const clientJar = path.join(versionsDir, MINECRAFT_VERSION, `${MINECRAFT_VERSION}.jar`);
-  if (fs.existsSync(clientJar)) {
-    classpathEntries.push(clientJar);
-  }
+  // The vanilla client jar deliberately stays OFF the classpath. Under NeoForge
+  // the game code comes from the installer-generated SRG jar (an explicit
+  // `minecraft` module), and adding the vanilla jar puts a second module
+  // (_1._21._1) on the layer that exports net.minecraft.client.main too —
+  // ModLauncher then aborts with a ResolutionException.
 
   // --- Libraries ---
   const libs = (versionJson.libraries || []).filter((lib) => matchesRules(lib.rules));
   const nativeKey = process.platform === 'win32' ? 'natives-windows' : process.platform === 'darwin' ? 'natives-macos' : 'natives-linux';
+  let nativeCount = 0;
 
   for (const lib of libs) {
     const artifact = lib.downloads?.artifact;
@@ -98,6 +103,16 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
     if (!fs.existsSync(dest)) {
       tasks.push({ url: artifact.url, dest, kind: 'library' });
     }
+
+    // Since 1.20.5 the shared libraries ship as separate `<artifact>-natives-<os>`
+    // artifacts instead of old-style classifiers. They must be unpacked into the
+    // natives directory — LWJGL loads them from there via java.library.path.
+    if (/-natives-/.test(artifact.path)) {
+      tasks.push({ url: null, dest, extract: nativesDir, kind: 'native' });
+      nativeCount++;
+      continue;
+    }
+
     classpathEntries.push(dest);
 
     const classifier = lib.natives?.[nativeKey];
@@ -109,6 +124,7 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
           tasks.push({ url: nativeArtifact.url, dest: nativeJar, kind: 'library' });
         }
         tasks.push({ url: null, dest: nativeJar, extract: nativesDir, kind: 'native' });
+        nativeCount++;
       }
     }
   }
@@ -150,13 +166,15 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
       await extractZip(task.dest, task.extract);
     }
   }
+  if (nativeCount > 0) onLog?.(`Нативные библиотеки распакованы: ${nativeCount}.`);
 
   if (toDownload.length === 0) onLog?.('Все файлы уже на месте.');
   onProgress?.(1);
   onLog?.('Все файлы скачаны.');
 
   // --- Build the launch command ---
-  const classpath = classpathEntries.join(path.delimiter);
+  // securejarhandler rejects a classpath that lists the same jar twice.
+  const classpath = [...new Set(classpathEntries)].join(path.delimiter);
   const offlineUuid = offlineUuidFor(nickname);
 
   const values = {
@@ -230,8 +248,19 @@ async function prepareAndLaunch({ java, versionJson, gameDir, nickname, server, 
     else if (Array.isArray(arg.value)) gameArgs.push(...arg.value.map((v) => substitute(v, values)));
   }
 
-  // Auto-join the server (remove any vanilla quickPlay args first to avoid duplicates)
-  const filteredGameArgs = gameArgs.filter((a) => !a.startsWith('--quickPlay'));
+  // Auto-join the server. Vanilla lists each quickPlay option as two separate
+  // entries (the flag and its value), so both must go before ours is appended —
+  // filtering only the flags would leave the substituted address behind as a
+  // stray positional argument.
+  const filteredGameArgs = [];
+  for (let i = 0; i < gameArgs.length; i++) {
+    const arg = gameArgs[i];
+    if (arg.startsWith('--quickPlay')) {
+      i++; // also drop the value that follows the flag
+      continue;
+    }
+    filteredGameArgs.push(arg);
+  }
   if (server) {
     filteredGameArgs.push('--quickPlayMultiplayer', server);
   }
@@ -264,11 +293,16 @@ function substitute(template, values) {
 
 function matchesRules(rules) {
   if (!rules || rules.length === 0) return true;
+  const osName = process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'osx' : 'linux';
+  const arch = process.arch;
   let allowed = false;
   for (const rule of rules) {
-    const osMatch = !rule.os || rule.os.name === (process.platform === 'win32' ? 'windows' : process.platform === 'darwin' ? 'osx' : 'linux');
-    if (rule.action === 'allow' && osMatch) allowed = true;
-    if (rule.action === 'disallow' && osMatch) return false;
+    const nameMatch = !rule.os || !rule.os.name || rule.os.name === osName;
+    const archMatch = !rule.os || !rule.os.arch || rule.os.arch === arch;
+    if (nameMatch && archMatch) {
+      if (rule.action === 'allow') allowed = true;
+      if (rule.action === 'disallow') return false;
+    }
   }
   return allowed;
 }

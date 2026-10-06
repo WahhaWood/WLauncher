@@ -25,8 +25,11 @@ let running = false;
 
 const DEFAULT_SETTINGS = {
   gameDir: '',
-  minRam: 1024,
-  maxRam: 2048,
+  // -Xms is kept at roughly a quarter of -Xmx: -XX:+AlwaysPreTouch only
+  // pre-commits up to -Xms, so a small -Xms against a large -Xmx leaves most of
+  // the heap to be faulted in during play, which is exactly when stutter hurts.
+  minRam: 2048,
+  maxRam: 8192,
   width: 1920,
   height: 1080,
   jvmArgs: '',

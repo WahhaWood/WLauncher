@@ -50,8 +50,8 @@ function pingServer(address, timeoutMs = 5000) {
         if (!frame) return; // wait for more data
         const { packet } = frame;
         let offset = 0;
-        readVarInt(packet, offset); // packet id (unused)
-        offset = readVarInt(packet, offset).size;
+        // packet id, then the length-prefixed JSON payload
+        offset += readVarInt(packet, offset).size;
         const jsonLen = readVarInt(packet, offset);
         offset += jsonLen.size;
         const json = JSON.parse(packet.slice(offset, offset + jsonLen.value).toString('utf8'));
