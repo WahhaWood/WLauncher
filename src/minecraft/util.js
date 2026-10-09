@@ -289,4 +289,6 @@ module.exports = {
   dataDir,
   isPortable,
   rotateFile,
+  readZipEntries,
+  inflateEntry,
 };

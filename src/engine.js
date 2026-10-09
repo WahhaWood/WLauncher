@@ -6,7 +6,7 @@ const { spawn } = require('child_process');
 const { ensureJava } = require('./minecraft/java');
 const { ensureGame, MINECRAFT_VERSION } = require('./minecraft/installer');
 const { prepareAndLaunch, offlineUuidFor } = require('./minecraft/launcher');
-const { checkDiskSpace, humanBytes, download, extractZip, dataDir, rotateFile } = require('./minecraft/util');
+const { checkDiskSpace, humanBytes, download, extractZip, dataDir, rotateFile, readZipEntries, inflateEntry } = require('./minecraft/util');
 const { pingServer } = require('./minecraft/server-status');
 
 const PACKWIZ_BOOTSTRAP_SOURCE = path.join(__dirname, '..', 'vendor', 'packwiz', 'packwiz-installer-bootstrap.jar');
@@ -209,6 +209,47 @@ function sha256File(filePath) {
 }
 
 /**
+ * Three-way merge for overlay archives (config/kubejs/shaders).
+ * state.files maps rel-path -> sha256 of what WE installed last time.
+ * A file whose disk content differs from our installed sha was changed by
+ * the player and is left alone; everything else (new or untouched) is
+ * written and recorded. Returns the number of preserved player files.
+ */
+function applyOverlaySelective(zipPath, gameDir, state) {
+  const buffer = fs.readFileSync(zipPath);
+  const installed = state.files && typeof state.files === 'object' ? state.files : {};
+  const updated = { ...installed };
+  let preserved = 0;
+  for (const entry of readZipEntries(buffer, zipPath)) {
+    const rel = entry.name.replace(/\\/g, '/').replace(/^\/+/, '');
+    const target = safeGamePath(gameDir, rel);
+    if (!target) continue; // escapes gameDir — drop it
+    if (entry.name.endsWith('/')) {
+      fs.mkdirSync(target, { recursive: true });
+      continue;
+    }
+    const data = inflateEntry(buffer, entry);
+    if (Object.prototype.hasOwnProperty.call(installed, rel) && fs.existsSync(target)) {
+      let diskSha = null;
+      try {
+        diskSha = sha256File(target);
+      } catch {
+        diskSha = null;
+      }
+      if (diskSha !== null && diskSha !== installed[rel]) {
+        preserved++; // player customized — keep their content
+        continue;
+      }
+    }
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.writeFileSync(target, data);
+    updated[rel] = createHash('sha256').update(data).digest('hex');
+  }
+  state.files = updated;
+  return preserved;
+}
+
+/**
  * Pack sync from manifest.json (see wahha-pack/build-pack.py).
  * Downloads only archives whose sha256 changed, verifies the hash, extracts
  * over gameDir and removes stale jars from mods/. Archives are deleted after
@@ -231,6 +272,9 @@ async function syncPackFromManifest({ manifestUrl, gameDir, onLog, onProgress } 
   const cacheDir = path.join(dataDir(), 'cache', 'pack');
   fs.mkdirSync(cacheDir, { recursive: true });
   const state = readPackState(gameDir);
+  // Snapshot of the previously installed overlay BEFORE this sync refreshes
+  // it: files that left the pack are computed against this list.
+  const prevOverlayFiles = Array.isArray(state.overlayFiles) ? [...state.overlayFiles] : [];
 
   // Verifies the pack is fully on disk without the archives (they are
   // deleted after apply). Mods and overlay are checked independently so a
@@ -307,13 +351,22 @@ async function syncPackFromManifest({ manifestUrl, gameDir, onLog, onProgress } 
 
     if (!fresh || !applied) {
       log(`Распаковка ${file.name}…`);
-      await extractZip(cached, gameDir);
-      state[appliedKey] = file.sha256;
+      if (isModsArchive(file.name)) {
+        // Jars are not player-editable — exact set, wholesale replace.
+        await extractZip(cached, gameDir);
+      } else {
+        // Config/KubeJS/shaders: three-way merge — files the player changed
+        // since our last apply keep their content, everything else updates.
+        // This is what stops "wahha's settings" from stomping players.
+        const preserved = applyOverlaySelective(cached, gameDir, state);
+        if (preserved > 0) log(`Сохранены настройки игрока: файлов ${preserved}.`);
+      }
       // Overlay archives carry config/kubejs: refresh the installed list so
       // files removed from the pack can be cleaned up below.
       if (Array.isArray(manifest.overlay) && !file.name.startsWith('mods-')) {
         state.overlayFiles = manifest.overlay;
       }
+      state[appliedKey] = file.sha256;
       writePackState(gameDir, state);
     }
     // Archives are deleted after a successful apply: they duplicate the
@@ -351,10 +404,9 @@ async function syncPackFromManifest({ manifestUrl, gameDir, onLog, onProgress } 
   // script would otherwise keep running). Only files this sync previously
   // installed are eligible — player-generated files are never touched.
   if (Array.isArray(manifest.overlay)) {
-    const prev = Array.isArray(state.overlayFiles) ? state.overlayFiles : [];
     const keep = new Set(manifest.overlay);
     let removed = 0;
-    for (const rel of prev) {
+    for (const rel of prevOverlayFiles) {
       if (keep.has(rel)) continue;
       const full = safeGamePath(gameDir, rel);
       if (full && fs.existsSync(full)) {
@@ -364,6 +416,13 @@ async function syncPackFromManifest({ manifestUrl, gameDir, onLog, onProgress } 
     }
     if (removed > 0) log(`Удалено устаревших файлов сборки: ${removed}.`);
     state.overlayFiles = manifest.overlay;
+    // Prune per-file shas of files that left the pack.
+    if (state.files && typeof state.files === 'object') {
+      const keep = new Set(manifest.overlay);
+      for (const key of Object.keys(state.files)) {
+        if (!keep.has(key)) delete state.files[key];
+      }
+    }
   }
 
   state.version = manifest.packVersion || state.version;
